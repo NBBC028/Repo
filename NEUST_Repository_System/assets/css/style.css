@@ -1,0 +1,245 @@
+/* 
+ * NEUST Repository System
+ * Global Styles
+ */
+
+:root {
+  --primary-color: #0d6efd;
+  --secondary-color: #6c757d;
+  --success-color: #198754;
+  --danger-color: #dc3545;
+  --warning-color: #ffc107;
+  --info-color: #0dcaf0;
+  --light-color: #f8f9fa;
+  --dark-color: #212529;
+  --neust-blue: #003366;
+  --neust-gold: #FFD700;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background-color: #f5f5f5;
+  color: #333;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header & Navigation */
+.navbar-brand img {
+  max-height: 40px;
+}
+
+.navbar {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-dark.bg-primary {
+  background-color: var(--neust-blue) !important;
+}
+
+/* Main Content */
+main {
+  flex: 1;
+  padding: 2rem 0;
+}
+
+/* Cards */
+.card {
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+.card-header {
+  font-weight: 500;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.card-header.bg-primary {
+  background-color: var(--neust-blue) !important;
+}
+
+/* Dashboard Stats */
+.stat-card {
+  transition: transform 0.3s;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+}
+
+.stat-icon {
+  font-size: 2.5rem;
+  opacity: 0.8;
+}
+
+/* Tables */
+.table {
+  margin-bottom: 0;
+}
+
+.table th {
+  font-weight: 600;
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* Forms */
+.form-control:focus, .form-select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-label {
+  font-weight: 500;
+}
+
+/* Buttons */
+.btn {
+  border-radius: 0.25rem;
+  padding: 0.375rem 0.75rem;
+  font-weight: 500;
+}
+
+.btn-primary {
+  background-color: var(--neust-blue);
+  border-color: var(--neust-blue);
+}
+
+.btn-primary:hover {
+  background-color: #002244;
+  border-color: #002244;
+}
+
+/* Footer */
+footer {
+  background-color: var(--neust-blue);
+  color: white;
+  padding: 1.5rem 0;
+  margin-top: auto;
+}
+
+footer a {
+  color: var(--neust-gold);
+  text-decoration: none;
+}
+
+footer a:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* Alerts */
+.alert {
+  border-radius: 0.25rem;
+  border: none;
+}
+
+/* Pagination */
+.pagination .page-item.active .page-link {
+  background-color: var(--neust-blue);
+  border-color: var(--neust-blue);
+}
+
+.pagination .page-link {
+  color: var(--neust-blue);
+}
+
+/* Research Cards */
+.research-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.research-card .card-body {
+  flex: 1;
+}
+
+.research-card .card-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.research-card .card-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Quick Actions */
+.quick-action {
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  background-color: #fff;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  transition: all 0.3s;
+}
+
+.quick-action:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.quick-action i {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: var(--neust-blue);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .card-title {
+    font-size: 1.1rem;
+  }
+  
+  .stat-icon {
+    font-size: 2rem;
+  }
+  
+  .quick-action {
+    padding: 1rem;
+  }
+  
+  .quick-action i {
+    font-size: 1.5rem;
+  }
+}
+
+/* Animations */
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--neust-blue);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #002244;
+}
