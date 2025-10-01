@@ -30,8 +30,13 @@ $departments = $conn->query("SELECT DISTINCT department FROM research WHERE stat
         <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
             <div class="container">
                 <a class="navbar-brand" href="../index.php">
-                    <img src="../assets/images/neust-logo.png" alt="NEUST Logo" height="40">
-                    NEUST Repository
+                     <img src="http://localhost/mgt%20repo/img/neust_logo.png" alt="NEUST Logo" height="40">
+                   
+                </a>
+                 <img src="https://scontent.fcrk3-4.fna.fbcdn.net/v/t1.15752-9/552581069_2011437836268230_2095169435658182307_n.png?stp=dst-png_s480x480&_nc_cat=108&ccb=1-7&_nc_sid=0024fc&_nc_ohc=bGUBRyQBa8EQ7kNvwFtFG8M&_nc_oc=AdlwhmaA1uwpnKxtwBPFwBODlh8SQzUm8JALj33YnmDrTGNyS0qjjK5tpEJcYv0-OTI&_nc_zt=23&_nc_ht=scontent.fcrk3-4.fna&oh=03_Q7cD3QEoolV5MnS1_jDhVHAWukL5_cT3TUDyfIuV8hQR-aFamw&oe=68FDBEF8" alt="NEUST Logo" height="40">
+                   <img src="https://scontent.fcrk3-3.fna.fbcdn.net/v/t1.15752-9/552295913_801033142295719_7514254484468521732_n.png?stp=dst-png_s480x480&_nc_cat=100&ccb=1-7&_nc_sid=0024fc&_nc_ohc=jgMapZiIbAQQ7kNvwFZOOOz&_nc_oc=AdkQq_p07pKhW6ot5dYlx_vehL0z-t7o9gIXJHCoIbZ3Cf2wJAa6MGlfDXcZcuZ-_vY&_nc_zt=23&_nc_ht=scontent.fcrk3-3.fna&oh=03_Q7cD3QGlAlje6f7dnw106-iO2C34pn_fOFOJkX5GPGROkFALvQ&oe=68FDEEBF" alt="NEUST Logo" height="40">
+                 <img src="https://scontent.fcrk3-2.fna.fbcdn.net/v/t1.15752-9/552085111_803108978879860_1283386021329109856_n.png?stp=dst-png_s480x480&_nc_cat=101&ccb=1-7&_nc_sid=0024fc&_nc_ohc=58Abs0o90N0Q7kNvwF0nMgC&_nc_oc=AdkHwUxrzclWv83PNfNFjXwcK8RO8YDf_c6OiDeYSNx08HRDxRzqh5dDkRPxtfyUTlE&_nc_zt=23&_nc_ht=scontent.fcrk3-2.fna&oh=03_Q7cD3QEySrXOTnQmthjQeO9Y6FRAmgx3b_MXuWryY81qoS46Cg&oe=68FDE7F9" alt="NEUST Logo" height="40">
+                   NEUST-MGT Repository Complete Research Project System
                 </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                     <span class="navbar-toggler-icon"></span>
@@ -57,7 +62,7 @@ $departments = $conn->query("SELECT DISTINCT department FROM research WHERE stat
     
     <main class="container mt-4">
         <div class="jumbotron bg-light p-4 rounded mb-4">
-            <h1 class="display-5">Welcome to NEUST Repository System</h1>
+            <h1 class="display-5">Welcome to NEUST MGT Repository Complete Research Project System</h1>
             <p class="lead">Browse research abstracts from Nueva Ecija University of Science and Technology.</p>
             <p>To access full research papers, please <a href="../register.php">register</a> or <a href="../login.php">login</a>.</p>
         </div>

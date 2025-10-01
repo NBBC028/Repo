@@ -1,66 +1,84 @@
 <?php
-require_once 'includes/session.php';
 require_once 'includes/db.php';
-require_once 'includes/functions.php'; // For sanitize_input and other helpers
+require_once 'includes/functions.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    // Sanitize inputs
-    $full_name = sanitize_input($_POST['full_name']);
-    $username = sanitize_input($_POST['username']);
-    $email = sanitize_input($_POST['email']);
-    $role = sanitize_input($_POST['role']);
-    $department = sanitize_input($_POST['department']);
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $full_name = trim($_POST['full_name']);
+    $username = trim($_POST['username']);
+    $email = trim($_POST['email']);
+    $role = $_POST['role'];
+    $department = $_POST['department'];
+    $year_section = !empty($_POST['year_section']) ? $_POST['year_section'] : NULL;
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
-    $year_section = $role === 'student' ? sanitize_input($_POST['year_section']) : null;
 
-    // Basic validations
-    if (empty($full_name) || empty($username) || empty($email) || empty($role) || empty($department) || empty($password) || empty($confirm_password) || ($role === 'student' && empty($year_section))) {
+    // Check empty fields
+    if (empty($full_name) || empty($username) || empty($email) || empty($role) || empty($department) || empty($password) || empty($confirm_password)) {
         header("Location: register.php?error=empty");
         exit;
     }
 
+    // Password check
     if ($password !== $confirm_password) {
         header("Location: register.php?error=password");
         exit;
     }
 
-    // Check if username or email exists
-    $stmt = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+    // Check existing username or email
+    $stmt = $conn->prepare("SELECT id FROM users WHERE username=? OR email=?");
     $stmt->bind_param("ss", $username, $email);
     $stmt->execute();
     $stmt->store_result();
     if ($stmt->num_rows > 0) {
-        // Determine which error
-        $stmt->bind_result($existing_id);
-        $stmt->fetch();
-        $stmt->close();
-        header("Location: register.php?error=username"); // could also be email
+        header("Location: register.php?error=username");
         exit;
     }
     $stmt->close();
 
-    // Hash password
-    $password_hash = password_hash($password, PASSWORD_DEFAULT);
+    // Handle file upload (ID image)
+    if (isset($_FILES['verification_id']) && $_FILES['verification_id']['error'] == 0) {
+        $allowed = ['jpg','jpeg','png'];
+        $file_name = $_FILES['verification_id']['name'];
+        $file_tmp = $_FILES['verification_id']['tmp_name'];
+        $file_size = $_FILES['verification_id']['size'];
+        $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
 
-    // Insert user into database
-    $stmt = $conn->prepare("INSERT INTO users (full_name, username, email, role, department, year_section, password, registration_date) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
-    $stmt->bind_param("sssssss", $full_name, $username, $email, $role, $department, $year_section, $password_hash);
+        if (!in_array($file_ext, $allowed) || $file_size > 2*1024*1024) { // 2MB limit
+            header("Location: register.php?error=file");
+            exit;
+        }
 
-    if ($stmt->execute()) {
-        $stmt->close();
-        // Redirect to login page after successful registration
-        header("Location: login.php?success=registered");
-        exit;
+        // Create folder if not exists
+        $upload_dir = "uploads/ids/";
+        if (!is_dir($upload_dir)) {
+            mkdir($upload_dir, 0777, true);
+        }
+
+        $new_file_name = uniqid("id_").".".$file_ext;
+        $file_path = $upload_dir.$new_file_name;
+
+        if (!move_uploaded_file($file_tmp, $file_path)) {
+            header("Location: register.php?error=file");
+            exit;
+        }
     } else {
-        $stmt->close();
-        header("Location: register.php?error=database");
+        header("Location: register.php?error=file");
         exit;
     }
 
-} else {
-    // Not POST request
-    header("Location: register.php");
-    exit;
+    // Insert user (is_verified = 0 by default)
+    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+    $stmt = $conn->prepare("INSERT INTO users 
+        (full_name, username, email, role, department, year_section, verification_id, password, is_verified, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())");
+    $stmt->bind_param("ssssssss", $full_name, $username, $email, $role, $department, $year_section, $file_path, $hashed_password);
+
+    if ($stmt->execute()) {
+        header("Location: login.php?success=registered");
+        exit;
+    } else {
+        header("Location: register.php?error=unknown");
+        exit;
+    }
 }
+?>

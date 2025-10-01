@@ -26,35 +26,27 @@ if (is_logged_in()) {
             <div class="col-md-6">
                 <div class="card shadow">
                     <div class="card-header bg-primary text-white text-center">
+                        <img src="http://localhost/mgt%20repo/img/neust_logo.png" alt="NEUST Logo" height="80">
                         <h3>NEUST-MGT Repository Complete Research Project System</h3>
-                        <p>Register for an account</p>
                     </div>
                     <div class="card-body">
                         <?php
-                        // Display error message if any
                         if (isset($_GET['error'])) {
                             $error = '';
                             switch ($_GET['error']) {
-                                case 'empty':
-                                    $error = 'Please fill in all fields.';
-                                    break;
-                                case 'username':
-                                    $error = 'Username already exists.';
-                                    break;
-                                case 'email':
-                                    $error = 'Email already exists.';
-                                    break;
-                                case 'password':
-                                    $error = 'Passwords do not match.';
-                                    break;
-                                default:
-                                    $error = 'An error occurred. Please try again.';
+                                case 'empty': $error = 'Please fill in all fields.'; break;
+                                case 'username': $error = 'Username already exists.'; break;
+                                case 'email': $error = 'Email already exists.'; break;
+                                case 'password': $error = 'Passwords do not match.'; break;
+                                case 'file': $error = 'Please upload a valid ID image (JPG, PNG, max 2MB).'; break;
+                                default: $error = 'An error occurred. Please try again.';
                             }
                             echo display_alert($error, 'danger');
                         }
                         ?>
-                        
-                        <form action="register_process.php" method="post">
+
+                        <!-- Important: enctype added for file upload -->
+                        <form action="register_process.php" method="post" enctype="multipart/form-data">
                             <div class="mb-3">
                                 <label for="full_name" class="form-label">Full Name</label>
                                 <div class="input-group">
@@ -104,12 +96,21 @@ if (is_logged_in()) {
                                 </div>
                             </div>
 
-                            <!-- Year & Section: Only for Students -->
+                            <!-- Year & Section (for Students only) -->
                             <div class="mb-3" id="year_section_field">
                                 <label for="year_section" class="form-label">Year & Section</label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="fas fa-graduation-cap"></i></span>
-                                    <input type="text" class="form-control" id="year_section" name="year_section" placeholder="e.g. 3A" required>
+                                    <input type="text" class="form-control" id="year_section" name="year_section" placeholder="e.g. 3A">
+                                </div>
+                            </div>
+
+                            <!-- Upload Verification ID -->
+                            <div class="mb-3">
+                                <label for="verification_id" class="form-label">Upload Verification ID</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="fas fa-id-card"></i></span>
+                                    <input type="file" class="form-control" id="verification_id" name="verification_id" accept=".jpg,.jpeg,.png" required>
                                 </div>
                             </div>
 
@@ -155,12 +156,10 @@ function toggleYearSection() {
         yearInput.required = false;
     }
 }
-
-// Initialize on page load
 document.addEventListener('DOMContentLoaded', toggleYearSection);
 </script>
 
-<!-- Bootstrap JS Bundle with Popper -->
+<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

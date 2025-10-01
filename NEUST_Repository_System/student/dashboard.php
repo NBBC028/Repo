@@ -43,15 +43,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['favorite_research_id'
 }
 
 // Get favorite research IDs for current user
-$fav_result = $conn->query("SELECT research_id FROM research_favorites WHERE user_id = {$_SESSION['user_id']}");
+$fav_result = $conn->query("SELECT research_id FROM research_favorites WHERE user_id = " . intval($_SESSION['user_id']));
 $favorites = [];
 while ($row = $fav_result->fetch_assoc()) {
     $favorites[] = $row['research_id'];
 }
 
+// Get favorite research details (if any)
+$fav_research = null;
+if (!empty($favorites)) {
+    $fav_ids = implode(",", array_map('intval', $favorites));
+    $fav_research = $conn->query("
+        SELECT r.*, u.full_name, u.year_section
+        FROM research r
+        JOIN users u ON r.uploaded_by = u.id
+        WHERE r.id IN ($fav_ids)
+        ORDER BY FIELD(r.id, $fav_ids)
+    ");
+}
+
 // Get recent research papers with ratings
 $recent_research = $conn->query("
-    SELECT r.*, u.full_name, 
+    SELECT r.*, u.full_name, u.year_section,
            COALESCE(AVG(rr.rating), 0) AS avg_rating, COUNT(rr.id) AS rating_count
     FROM research r
     JOIN users u ON r.uploaded_by = u.id
@@ -63,9 +76,9 @@ $recent_research = $conn->query("
 ");
 
 // Get research papers by department
-$student_department = $_SESSION['department'];
+$student_department = $conn->real_escape_string($_SESSION['department']);
 $department_research = $conn->query("
-    SELECT r.*, u.full_name, 
+    SELECT r.*, u.full_name, u.year_section,
            COALESCE(AVG(rr.rating), 0) AS avg_rating, COUNT(rr.id) AS rating_count
     FROM research r
     JOIN users u ON r.uploaded_by = u.id
@@ -80,9 +93,39 @@ $department_research = $conn->query("
 
 <?php include '../includes/header.php'; ?>
 
+<style>
+.list-group-item.bg-primary {
+    color: #fff;
+    background-color: var(--bs-primary) !important;
+    border-color: rgba(0,0,0,0.05);
+}
+.list-group-item.bg-primary:hover,
+.list-group-item.bg-primary:focus {
+    background-color: rgba(13,110,253,0.9) !important;
+    color: #fff !important;
+    text-decoration: none;
+}
+.modal-header.bg-primary {
+    background-color: var(--bs-primary) !important;
+    color: #fff;
+}
+.btn-primary {
+    background-color: var(--bs-primary) !important;
+    border-color: var(--bs-primary) !important;
+}
+.btn-primary:hover {
+    background-color: #0b5ed7 !important;
+    border-color: #0a58ca !important;
+}
+</style>
+
 <div class="container-fluid">
-    <h1 class="mb-4">Student Dashboard</h1>
-    
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0">Student Dashboard</h3>
+        </div>
+    </div>
+
     <div class="row">
         <!-- Recent Research -->
         <div class="col-md-8 mb-4">
@@ -99,23 +142,27 @@ $department_research = $conn->query("
                                     <th>Authors</th>
                                     <th>Department</th>
                                     <th>Year</th>
+                                    <th>Year & Section</th>
                                     <th>Uploaded By</th>
                                     <th>Rating</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php if ($recent_research->num_rows > 0): ?>
+                                <?php if ($recent_research && $recent_research->num_rows > 0): ?>
                                     <?php while ($research = $recent_research->fetch_assoc()): ?>
+                                        <?php 
+                                            $file_path = "../" . $research['file_path'];
+                                            $file_ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+                                        ?>
                                         <tr>
                                             <td><?php echo htmlspecialchars($research['title']); ?></td>
                                             <td><?php echo htmlspecialchars($research['authors']); ?></td>
                                             <td><?php echo htmlspecialchars($research['department']); ?></td>
-                                            <td><?php echo $research['year_published']; ?></td>
+                                            <td><?php echo htmlspecialchars($research['year_published']); ?></td>
+                                            <td><?php echo !empty($research['year_section']) ? htmlspecialchars($research['year_section']) : '-'; ?></td>
                                             <td><?php echo htmlspecialchars($research['full_name']); ?></td>
-                                            <td>
-                                                ✰ <?php echo number_format($research['avg_rating'], 1); ?> (<?php echo $research['rating_count']; ?>)
-                                            </td>
+                                            <td>✰ <?php echo number_format($research['avg_rating'], 1); ?> (<?php echo $research['rating_count']; ?>)</td>
                                             <td>
                                                 <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#researchModal<?php echo $research['id']; ?>">
                                                     <i class="fas fa-eye"></i> View
@@ -123,23 +170,31 @@ $department_research = $conn->query("
                                             </td>
                                         </tr>
 
-                                        <!-- Modal -->
+                                        <!-- Research Modal -->
                                         <div class="modal fade" id="researchModal<?php echo $research['id']; ?>" tabindex="-1" aria-hidden="true">
                                             <div class="modal-dialog modal-xl">
                                                 <div class="modal-content">
                                                     <div class="modal-header bg-primary text-white">
                                                         <h5 class="modal-title"><?php echo htmlspecialchars($research['title']); ?></h5>
-                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                                     </div>
                                                     <div class="modal-body">
                                                         <div class="row">
                                                             <div class="col-md-6">
-                                                                <embed src="../<?php echo $research['file_path']; ?>#page=1" type="application/pdf" width="100%" height="400px" />
+                                                                <?php if ($file_ext === 'pdf'): ?>
+                                                                    <embed src="<?php echo $file_path; ?>#page=1" type="application/pdf" width="100%" height="400px" />
+                                                                <?php elseif ($file_ext === 'doc' || $file_ext === 'docx'): ?>
+                                                                    <iframe src="https://docs.google.com/gview?url=http://localhost/NEUST_Repository_System/<?php echo $research['file_path']; ?>&embedded=true" 
+                                                                            style="width:100%; height:400px;" frameborder="0"></iframe>
+                                                                <?php else: ?>
+                                                                    <p class="text-danger">Preview not available. Please download the file to view.</p>
+                                                                <?php endif; ?>
                                                             </div>
                                                             <div class="col-md-6">
                                                                 <p><strong>Authors:</strong> <?php echo htmlspecialchars($research['authors']); ?></p>
                                                                 <p><strong>Department:</strong> <?php echo htmlspecialchars($research['department']); ?></p>
-                                                                <p><strong>Year Published:</strong> <?php echo $research['year_published']; ?></p>
+                                                                <p><strong>Year Published:</strong> <?php echo htmlspecialchars($research['year_published']); ?></p>
+                                                                <p><strong>Year & Section:</strong> <?php echo !empty($research['year_section']) ? htmlspecialchars($research['year_section']) : '-'; ?></p>
                                                                 <p><strong>Uploaded By:</strong> <?php echo htmlspecialchars($research['full_name']); ?></p>
                                                                 <hr>
                                                                 <p><strong>Abstract:</strong></p>
@@ -151,9 +206,7 @@ $department_research = $conn->query("
                                                                     <input type="hidden" name="research_id" value="<?php echo $research['id']; ?>">
                                                                     <label><strong>Rate this Research:</strong></label><br>
                                                                     <?php for ($i=1; $i<=5; $i++): ?>
-                                                                        <button type="submit" name="rating" value="<?php echo $i; ?>" class="btn btn-sm <?php echo ($i <= round($research['avg_rating'])) ? 'btn-warning' : 'btn-outline-secondary'; ?>">
-                                                                            ✰
-                                                                        </button>
+                                                                        <button type="submit" name="rating" value="<?php echo $i; ?>" class="btn btn-sm <?php echo ($i <= round($research['avg_rating'])) ? 'btn-warning' : 'btn-outline-secondary'; ?>">✰</button>
                                                                     <?php endfor; ?>
                                                                 </form>
 
@@ -168,7 +221,12 @@ $department_research = $conn->query("
                                                         </div>
                                                     </div>
                                                     <div class="modal-footer">
-                                                        <a href="../<?php echo $research['file_path']; ?>" class="btn btn-success" target="_blank">View Full Research</a>
+                                                        <a href="<?php echo $file_path; ?>" class="btn btn-primary" target="_blank">
+                                                            <i class="fas fa-file-pdf"></i> View Full Research
+                                                        </a>
+                                                        <a href="<?php echo $file_path; ?>" class="btn btn-primary" download>
+                                                            <i class="fas fa-download"></i> Download
+                                                        </a>
                                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                                                     </div>
                                                 </div>
@@ -176,13 +234,12 @@ $department_research = $conn->query("
                                         </div>
                                     <?php endwhile; ?>
                                 <?php else: ?>
-                                    <tr>
-                                        <td colspan="7" class="text-center">No research papers found.</td>
-                                    </tr>
+                                    <tr><td colspan="8" class="text-center">No research papers found.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
                     </div>
+
                     <div class="text-end">
                         <a href="../views/search.php" class="btn btn-primary">Advanced Search</a>
                     </div>
@@ -193,67 +250,76 @@ $department_research = $conn->query("
         <!-- Research by Department -->
         <div class="col-md-4 mb-4">
             <div class="card">
-                <div class="card-header bg-info text-white">
+                <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">Research in Your Department</h5>
                 </div>
                 <div class="card-body">
                     <div class="list-group">
-                        <?php if ($department_research->num_rows > 0): ?>
-                            <?php while ($research = $department_research->fetch_assoc()): ?>
-                                <a href="#" class="list-group-item list-group-item-action" data-bs-toggle="modal" data-bs-target="#deptResearchModal<?php echo $research['id']; ?>">
+                        <?php if ($department_research && $department_research->num_rows > 0): ?>
+                            <?php while ($r = $department_research->fetch_assoc()): ?>
+                                <?php 
+                                    $dept_file_path = "../" . $r['file_path'];
+                                    $dept_file_ext = strtolower(pathinfo($dept_file_path, PATHINFO_EXTENSION));
+                                ?>
+                                <a href="#" class="list-group-item list-group-item-action bg-primary text-white mb-2" data-bs-toggle="modal" data-bs-target="#deptResearchModal<?php echo $r['id']; ?>">
                                     <div class="d-flex w-100 justify-content-between">
-                                        <h6 class="mb-1"><?php echo htmlspecialchars($research['title']); ?></h6>
-                                        <small><?php echo $research['year_published']; ?></small>
+                                        <h6 class="mb-1 mb-0"><?php echo htmlspecialchars($r['title']); ?></h6>
+                                        <small><?php echo htmlspecialchars($r['year_published']); ?></small>
                                     </div>
-                                    <small>✰ <?php echo number_format($research['avg_rating'], 1); ?> (<?php echo $research['rating_count']; ?>)</small>
+                                    <small>Year & Section: <?php echo !empty($r['year_section']) ? htmlspecialchars($r['year_section']) : '-'; ?> | ✰ <?php echo number_format($r['avg_rating'], 1); ?> (<?php echo $r['rating_count']; ?>)</small>
                                 </a>
 
                                 <!-- Department Modal -->
-                                <div class="modal fade" id="deptResearchModal<?php echo $research['id']; ?>" tabindex="-1" aria-hidden="true">
+                                <div class="modal fade" id="deptResearchModal<?php echo $r['id']; ?>" tabindex="-1" aria-hidden="true">
                                     <div class="modal-dialog modal-xl">
                                         <div class="modal-content">
-                                            <div class="modal-header bg-info text-white">
-                                                <h5 class="modal-title"><?php echo htmlspecialchars($research['title']); ?></h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            <div class="modal-header bg-primary text-white">
+                                                <h5 class="modal-title"><?php echo htmlspecialchars($r['title']); ?></h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                             </div>
                                             <div class="modal-body">
                                                 <div class="row">
                                                     <div class="col-md-6">
-                                                        <embed src="../<?php echo $research['file_path']; ?>#page=1" type="application/pdf" width="100%" height="400px" />
+                                                        <?php if ($dept_file_ext === 'pdf'): ?>
+                                                            <embed src="<?php echo $dept_file_path; ?>#page=1" type="application/pdf" width="100%" height="400px" />
+                                                        <?php elseif ($dept_file_ext === 'doc' || $dept_file_ext === 'docx'): ?>
+                                                            <iframe src="https://docs.google.com/gview?url=http://localhost/NEUST_Repository_System/<?php echo $r['file_path']; ?>&embedded=true" 
+                                                                    style="width:100%; height:400px;" frameborder="0"></iframe>
+                                                        <?php else: ?>
+                                                            <p class="text-danger">Preview not available. Please download the file to view.</p>
+                                                        <?php endif; ?>
                                                     </div>
                                                     <div class="col-md-6">
-                                                        <p><strong>Authors:</strong> <?php echo htmlspecialchars($research['authors']); ?></p>
-                                                        <p><strong>Department:</strong> <?php echo htmlspecialchars($research['department']); ?></p>
-                                                        <p><strong>Year Published:</strong> <?php echo $research['year_published']; ?></p>
-                                                        <p><strong>Uploaded By:</strong> <?php echo htmlspecialchars($research['full_name']); ?></p>
+                                                        <p><strong>Authors:</strong> <?php echo htmlspecialchars($r['authors']); ?></p>
+                                                        <p><strong>Department:</strong> <?php echo htmlspecialchars($r['department']); ?></p>
+                                                        <p><strong>Year Published:</strong> <?php echo htmlspecialchars($r['year_published']); ?></p>
+                                                        <p><strong>Year & Section:</strong> <?php echo !empty($r['year_section']) ? htmlspecialchars($r['year_section']) : '-'; ?></p>
+                                                        <p><strong>Uploaded By:</strong> <?php echo htmlspecialchars($r['full_name']); ?></p>
                                                         <hr>
                                                         <p><strong>Abstract:</strong></p>
-                                                        <p><?php echo nl2br(htmlspecialchars($research['abstract'])); ?></p>
+                                                        <p><?php echo nl2br(htmlspecialchars($r['abstract'])); ?></p>
 
                                                         <hr>
-                                                        <!-- Rating Form -->
                                                         <form method="POST" class="d-inline">
-                                                            <input type="hidden" name="research_id" value="<?php echo $research['id']; ?>">
+                                                            <input type="hidden" name="research_id" value="<?php echo $r['id']; ?>">
                                                             <label><strong>Rate this Research:</strong></label><br>
                                                             <?php for ($i=1; $i<=5; $i++): ?>
-                                                                <button type="submit" name="rating" value="<?php echo $i; ?>" class="btn btn-sm <?php echo ($i <= round($research['avg_rating'])) ? 'btn-warning' : 'btn-outline-secondary'; ?>">
-                                                                    ✰
-                                                                </button>
+                                                                <button type="submit" name="rating" value="<?php echo $i; ?>" class="btn btn-sm <?php echo ($i <= round($r['avg_rating'])) ? 'btn-warning' : 'btn-outline-secondary'; ?>">✰</button>
                                                             <?php endfor; ?>
                                                         </form>
 
-                                                        <!-- Add to Favorite -->
                                                         <form method="POST" class="mt-2">
-                                                            <input type="hidden" name="favorite_research_id" value="<?php echo $research['id']; ?>">
-                                                            <button type="submit" class="btn btn-sm <?php echo in_array($research['id'], $favorites) ? 'btn-success' : 'btn-outline-primary'; ?>">
-                                                                <?php echo in_array($research['id'], $favorites) ? '★ Favorited' : '☆ Add to Favorites'; ?>
+                                                            <input type="hidden" name="favorite_research_id" value="<?php echo $r['id']; ?>">
+                                                            <button type="submit" class="btn btn-sm <?php echo in_array($r['id'], $favorites) ? 'btn-success' : 'btn-outline-primary'; ?>">
+                                                                <?php echo in_array($r['id'], $favorites) ? '★ Favorited' : '☆ Add to Favorites'; ?>
                                                             </button>
                                                         </form>
                                                     </div>
                                                 </div>
                                             </div>
                                             <div class="modal-footer">
-                                                <a href="../<?php echo $research['file_path']; ?>" class="btn btn-success" target="_blank">View Full Research</a>
+                                                <a href="<?php echo $dept_file_path; ?>" class="btn btn-primary" target="_blank"><i class="fas fa-file-pdf"></i> View Full Research</a>
+                                                <a href="<?php echo $dept_file_path; ?>" class="btn btn-primary" download><i class="fas fa-download"></i> Download</a>
                                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                                             </div>
                                         </div>
@@ -265,6 +331,45 @@ $department_research = $conn->query("
                         <?php endif; ?>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Favorites Section -->
+    <div class="card mt-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">My Favorite Research Papers</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Authors</th>
+                            <th>Department</th>
+                            <th>Year</th>
+                            <th>Year & Section</th>
+                            <th>Uploaded By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($fav_research && $fav_research->num_rows > 0): ?>
+                            <?php while ($fav = $fav_research->fetch_assoc()): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($fav['title']); ?></td>
+                                    <td><?php echo htmlspecialchars($fav['authors']); ?></td>
+                                    <td><?php echo htmlspecialchars($fav['department']); ?></td>
+                                    <td><?php echo htmlspecialchars($fav['year_published']); ?></td>
+                                    <td><?php echo !empty($fav['year_section']) ? htmlspecialchars($fav['year_section']) : '-'; ?></td>
+                                    <td><?php echo htmlspecialchars($fav['full_name']); ?></td>
+                                </tr>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <tr><td colspan="6" class="text-center">You have not added any favorites yet.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>

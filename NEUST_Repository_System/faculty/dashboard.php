@@ -24,7 +24,12 @@ $total_research = $conn->query("
 <?php include '../includes/header.php'; ?>
 
 <div class="container-fluid">
-    <h1 class="mb-4">Faculty Dashboard</h1>
+    <!-- Dashboard Header styled to match site header -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0">Faculty Dashboard</h3>
+        </div>
+    </div>
 
     <!-- Statistics Card -->
     <div class="row">
@@ -33,7 +38,9 @@ $total_research = $conn->query("
                 <div class="card-body">
                     <h5 class="card-title">My Research Papers</h5>
                     <h2 class="display-4"><?php echo $total_research; ?></h2>
-                    <p class="card-text"><a href="../views/search.php" class="text-white">View All Research</a></p>
+                    <p class="card-text">
+                        <a href="../views/search.php" class="text-white">View All Research</a>
+                    </p>
                 </div>
             </div>
         </div>
@@ -41,7 +48,7 @@ $total_research = $conn->query("
         <!-- Quick Actions -->
         <div class="col-md-8 mb-4">
             <div class="card">
-                <div class="card-header bg-success text-white">
+                <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">Quick Actions</h5>
                 </div>
                 <div class="card-body">
@@ -116,7 +123,6 @@ $total_research = $conn->query("
                                                 <i class="fas fa-eye"></i>
                                             </a>
                                         <?php endif; ?>
-                                        <!-- Removed edit button -->
                                         <a href="../views/upload_research.php?delete=<?php echo $research['id']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this research?')">
                                             <i class="fas fa-trash"></i>
                                         </a>

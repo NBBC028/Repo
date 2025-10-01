@@ -94,34 +94,44 @@ function generate_pagination($total_records, $records_per_page, $current_page, $
     return $pagination;
 }
 
-// Upload file with validation
+/**
+ * Upload file with validation (PDF, DOC, DOCX allowed)
+ */
 function upload_research_file($file) {
-    $target_dir = $_SERVER['DOCUMENT_ROOT'] . "/NEUST_REPOSITORY_SYSTEM/uploads/";
+    $target_dir = $_SERVER['DOCUMENT_ROOT'] . "/NEUST_Repository_System/uploads/";
     $file_extension = strtolower(pathinfo($file["name"], PATHINFO_EXTENSION));
     $new_filename = uniqid() . '.' . $file_extension;
     $target_file = $target_dir . $new_filename;
-    
-    // Check if file is a PDF
-    if ($file_extension != "pdf") {
+
+    // Allowed file types
+    $allowed_extensions = ['pdf', 'doc', 'docx'];
+
+    if (!in_array($file_extension, $allowed_extensions)) {
         return [
             'success' => false,
-            'message' => 'Only PDF files are allowed.'
+            'message' => 'Only PDF, DOC, and DOCX files are allowed.'
         ];
     }
-    
-    // Check file size (limit to 10MB)
-    if ($file["size"] > 10000000) {
+
+    // Check file size (limit to 20MB)
+    if ($file["size"] > 20000000) {
         return [
             'success' => false,
-            'message' => 'File is too large. Maximum size is 10MB.'
+            'message' => 'File is too large. Maximum size is 20MB.'
         ];
     }
-    
+
+    // Create uploads directory if not exists
+    if (!is_dir($target_dir)) {
+        mkdir($target_dir, 0777, true);
+    }
+
     // Upload file
     if (move_uploaded_file($file["tmp_name"], $target_file)) {
         return [
             'success' => true,
-            'file_path' => 'uploads/' . $new_filename
+            'file_path' => 'uploads/' . $new_filename,
+            'file_type' => $file_extension
         ];
     } else {
         return [
@@ -131,10 +141,27 @@ function upload_research_file($file) {
     }
 }
 
+/**
+ * Generate research preview (PDF or Word)
+ */
+function generate_research_preview($file_path) {
+    $extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+    $full_url = "http://" . $_SERVER['HTTP_HOST'] . "/" . $file_path;
+
+    if ($extension === 'pdf') {
+        // Direct preview in iframe
+        return '<iframe src="' . $full_url . '" width="100%" height="600px"></iframe>';
+    } elseif (in_array($extension, ['doc', 'docx'])) {
+        // Use Google Docs Viewer for Word files
+        return '<iframe src="https://docs.google.com/gview?url=' . urlencode($full_url) . '&embedded=true" width="100%" height="600px"></iframe>';
+    } else {
+        return '<p>Preview not available. Please download the file to view.</p>';
+    }
+}
+
 // ---------------------------
 // Search research by keywords
 // ---------------------------
-// FIX: required $conn first, optional filters later
 function search_research($conn, $keywords = '', $department = '', $year = '') {
     $query = "SELECT * FROM research WHERE 1=1";
 
@@ -153,16 +180,12 @@ function search_research($conn, $keywords = '', $department = '', $year = '') {
         $query .= " AND year_published = '$year'";
     }
 
-    // If not admin or faculty, only show public research
     if (!check_role(['admin', 'faculty'])) {
         $query .= " AND status = 'public'";
     }
 
-    // Use actual upload date column, e.g., uploaded_on
     $query .= " ORDER BY uploaded_on DESC";
 
-    $result = $conn->query($query);
-
-    return $result;
+    return $conn->query($query);
 }
 ?>

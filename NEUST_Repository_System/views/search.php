@@ -27,8 +27,10 @@ $per_page = 10;
 $offset = ($page - 1) * $per_page;
 
 // Base query
-$query = "SELECT r.*, u.full_name as uploader FROM research r 
-          LEFT JOIN users u ON r.uploaded_by = u.id WHERE 1=1";
+$query = "SELECT r.*, u.full_name as uploader 
+          FROM research r 
+          LEFT JOIN users u ON r.uploaded_by = u.id 
+          WHERE 1=1";
 $count_query = "SELECT COUNT(*) as total FROM research r WHERE 1=1";
 
 $params = [];
@@ -150,8 +152,8 @@ $result = $stmt->get_result();
     <!-- Search Results -->
     <div class="card">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Search Results</h5>
-            <span class="badge bg-light text-dark"><?php echo $total_rows; ?> results found</span>
+            <h5 class="mb-0"></h5>
+            
         </div>
         <div class="card-body">
             <?php if ($result->num_rows > 0): ?>
@@ -170,7 +172,12 @@ $result = $stmt->get_result();
                         <tbody>
                             <?php while ($row = $result->fetch_assoc()): ?>
                                 <tr>
-                                    <td><?php echo htmlspecialchars($row['title']); ?></td>
+                                    <!-- Title is now clickable -->
+                                    <td>
+                                        <a href="view_research.php?id=<?php echo $row['id']; ?>" class="fw-bold text-decoration-none text-primary">
+                                            <?php echo htmlspecialchars($row['title']); ?>
+                                        </a>
+                                    </td>
                                     <td><?php echo htmlspecialchars($row['authors']); ?></td>
                                     <td><?php echo htmlspecialchars($row['department']); ?></td>
                                     <td><?php echo htmlspecialchars($row['year_published']); ?></td>

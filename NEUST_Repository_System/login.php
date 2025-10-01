@@ -45,6 +45,12 @@ if (is_logged_in()) {
                                 case 'expired':
                                     $error = 'Your session has expired. Please login again.';
                                     break;
+                                case 'pending':
+                                    $error = 'Your account is still pending verification. Please wait for admin approval.';
+                                    break;
+                                case 'rejected':
+                                    $error = 'Your account has been rejected. Contact admin for more details.';
+                                    break;
                                 default:
                                     $error = 'An error occurred. Please try again.';
                             }
@@ -56,7 +62,7 @@ if (is_logged_in()) {
                             $message = '';
                             switch ($_GET['success']) {
                                 case 'registered':
-                                    $message = 'Registration successful. You can now login.';
+                                    $message = 'Registration successful. You can now login once approved by the admin.';
                                     break;
                                 case 'logout':
                                     $message = 'You have been logged out successfully.';
