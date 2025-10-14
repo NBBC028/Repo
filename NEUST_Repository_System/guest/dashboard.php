@@ -1,0 +1,301 @@
+<?php
+require_once '../includes/session.php';
+
+// Get recent public research papers
+$recent_research = $conn->query("SELECT r.id, r.title, r.abstract, r.authors, r.department, r.year_published, u.full_name 
+                                FROM research r 
+                                JOIN users u ON r.uploaded_by = u.id 
+                                WHERE r.status = 'public' 
+                                ORDER BY r.created_at DESC 
+                                LIMIT 10");
+
+// Get departments for filter
+$departments = $conn->query("SELECT DISTINCT department FROM research WHERE status = 'public' ORDER BY department");
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guest Access - NEUST Repository System</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../index.php">
+                     <img src="http://localhost/mgt%20repo/img/neust_logo.png" alt="NEUST Logo" height="40">
+                   
+                </a>
+                 <img src="https://scontent.fcrk3-4.fna.fbcdn.net/v/t1.15752-9/552581069_2011437836268230_2095169435658182307_n.png?stp=dst-png_s480x480&_nc_cat=108&ccb=1-7&_nc_sid=0024fc&_nc_ohc=bGUBRyQBa8EQ7kNvwFtFG8M&_nc_oc=AdlwhmaA1uwpnKxtwBPFwBODlh8SQzUm8JALj33YnmDrTGNyS0qjjK5tpEJcYv0-OTI&_nc_zt=23&_nc_ht=scontent.fcrk3-4.fna&oh=03_Q7cD3QEoolV5MnS1_jDhVHAWukL5_cT3TUDyfIuV8hQR-aFamw&oe=68FDBEF8" alt="NEUST Logo" height="40">
+                   <img src="https://scontent.fcrk3-3.fna.fbcdn.net/v/t1.15752-9/552295913_801033142295719_7514254484468521732_n.png?stp=dst-png_s480x480&_nc_cat=100&ccb=1-7&_nc_sid=0024fc&_nc_ohc=jgMapZiIbAQQ7kNvwFZOOOz&_nc_oc=AdkQq_p07pKhW6ot5dYlx_vehL0z-t7o9gIXJHCoIbZ3Cf2wJAa6MGlfDXcZcuZ-_vY&_nc_zt=23&_nc_ht=scontent.fcrk3-3.fna&oh=03_Q7cD3QGlAlje6f7dnw106-iO2C34pn_fOFOJkX5GPGROkFALvQ&oe=68FDEEBF" alt="NEUST Logo" height="40">
+                 <img src="https://scontent.fcrk3-2.fna.fbcdn.net/v/t1.15752-9/552085111_803108978879860_1283386021329109856_n.png?stp=dst-png_s480x480&_nc_cat=101&ccb=1-7&_nc_sid=0024fc&_nc_ohc=58Abs0o90N0Q7kNvwF0nMgC&_nc_oc=AdkHwUxrzclWv83PNfNFjXwcK8RO8YDf_c6OiDeYSNx08HRDxRzqh5dDkRPxtfyUTlE&_nc_zt=23&_nc_ht=scontent.fcrk3-2.fna&oh=03_Q7cD3QEySrXOTnQmthjQeO9Y6FRAmgx3b_MXuWryY81qoS46Cg&oe=68FDE7F9" alt="NEUST Logo" height="40">
+                   NEUST-MGT Repository Complete Research Project System
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="dashboard.php">
+                                <i class="fas fa-book"></i> Browse
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="../login.php">Login</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="../register.php">Register</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    
+    <main class="container mt-4">
+        <?php if (isset($_SESSION['success_message'])): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <?php 
+                    echo $_SESSION['success_message']; 
+                    unset($_SESSION['success_message']);
+                ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (isset($_SESSION['error_messages']) && is_array($_SESSION['error_messages'])): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <ul class="mb-0">
+                    <?php 
+                        foreach ($_SESSION['error_messages'] as $error) {
+                            echo '<li>' . $error . '</li>';
+                        }
+                        unset($_SESSION['error_messages']);
+                    ?>
+                </ul>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+        
+        <div class="jumbotron bg-light p-4 rounded mb-4">
+            <h1 class="display-5">Welcome to NEUST MGT Repository Complete Research Project System</h1>
+            <p class="lead">Browse research abstracts from Nueva Ecija University of Science and Technology.</p>
+            <p>To access full research papers, please <a href="../register.php">register</a> or <a href="../login.php">login</a>.</p>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Search Abstracts</h5>
+                    </div>
+                    <div class="card-body">
+                        <form action="dashboard.php" method="get">
+                            <div class="mb-3">
+                                <label for="keywords" class="form-label">Keywords</label>
+                                <input type="text" class="form-control" id="keywords" name="keywords" 
+                                       value="<?php echo isset($_GET['keywords']) ? htmlspecialchars($_GET['keywords']) : ''; ?>" 
+                                       placeholder="Enter keywords...">
+                            </div>
+                            <div class="mb-3">
+                                <label for="department" class="form-label">Department</label>
+                                <option value="Computer Science">Bachelor of Science in Business Administration</option>
+                                <option value="Information Technology">Bachelor of Science in Information Technology</option>
+                                <option value="Business Administration">Bachelor of Elementary Education</option>
+            
+                                <select class="form-select" id="department" name="department">
+                                    <option value="">All Departments</option>
+                                    <?php while ($dept = $departments->fetch_assoc()): ?>
+                                        <option value="<?php echo $dept['department']; ?>" 
+                                                <?php echo (isset($_GET['department']) && $_GET['department'] == $dept['department']) ? 'selected' : ''; ?>>
+                                            <?php echo $dept['department']; ?>
+                                        </option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="year" class="form-label">Year Published</label>
+                                <select class="form-select" id="year" name="year">
+                                    <option value="">All Years</option>
+                                    <?php for ($i = date('Y'); $i >= 2000; $i--): ?>
+                                        <option value="<?php echo $i; ?>" 
+                                                <?php echo (isset($_GET['year']) && $_GET['year'] == $i) ? 'selected' : ''; ?>>
+                                            <?php echo $i; ?>
+                                        </option>
+                                    <?php endfor; ?>
+                                </select>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">Search</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Research Abstracts</h5>
+                    </div>
+                    <div class="card-body">
+                        <?php
+                        // Process search if submitted
+                        if (isset($_GET['keywords']) || isset($_GET['department']) || isset($_GET['year'])) {
+                            $keywords = isset($_GET['keywords']) ? sanitize_input($_GET['keywords']) : '';
+                            $department = isset($_GET['department']) ? sanitize_input($_GET['department']) : '';
+                            $year = isset($_GET['year']) ? sanitize_input($_GET['year']) : '';
+                            
+                            $search_results = search_research($keywords, $department, $year, $conn);
+                            
+                            if ($search_results->num_rows > 0) {
+                                while ($research = $search_results->fetch_assoc()) {
+                                    echo '<div class="card mb-3">';
+                                    echo '<div class="card-header bg-light">';
+                                    echo '<h5 class="card-title">' . $research['title'] . '</h5>';
+                                    echo '<h6 class="card-subtitle mb-2 text-muted">Authors: ' . $research['authors'] . ' | ' . $research['year_published'] . '</h6>';
+                                    echo '</div>';
+                                    echo '<div class="card-body">';
+                                    echo '<p class="card-text">' . substr($research['abstract'], 0, 300) . '...</p>';
+                                    echo '</div>';
+                                    echo '<div class="card-footer bg-light">';
+                                    echo '<small class="text-muted">Department: ' . $research['department'] . '</small>';
+                                    echo '<div class="mt-2">
+                                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#studentVerifyModal' . $research['id'] . '">
+                                            <i class="fas fa-id-card"></i> Request Full Paper (Student Verification)
+                                        </button>
+                                    </div>';
+                                    echo '</div>';
+                                    
+                                    // Student Verification Modal
+                                    echo '<div class="modal fade" id="studentVerifyModal' . $research['id'] . '" tabindex="-1" aria-hidden="true">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <div class="modal-header bg-primary text-white">
+                                                    <h5 class="modal-title">Student Verification</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                </div>
+                                                <form action="request_manuscript.php" method="post" enctype="multipart/form-data">
+                                                    <div class="modal-body">
+                                                        <input type="hidden" name="research_id" value="' . $research['id'] . '">
+                                                        
+                                                        <div class="alert alert-info">
+                                                            <i class="fas fa-info-circle"></i> Please provide your student information to request access to the full manuscript.
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="student_name" class="form-label">Full Name</label>
+                                                            <input type="text" class="form-control" id="student_name" name="student_name" required>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="student_id" class="form-label">Student ID Number</label>
+                                                            <input type="text" class="form-control" id="student_id" name="student_id" required>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="email" class="form-label">Email Address</label>
+                                                            <input type="email" class="form-control" id="email" name="email" required>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="department" class="form-label">Department</label>
+                                                            <select class="form-select" id="department" name="department" required>
+                                                                <option value="">Select Department</option>
+                                                                <option value="Bachelor of Science in Business Administration">Bachelor of Science in Business Administration</option>
+                                                                <option value="Bachelor of Science in Information Technology">Bachelor of Science in Information Technology</option>
+                                                                <option value="Bachelor of Elementary Education">Bachelor of Elementary Education</option>
+                                                            </select>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="id_card" class="form-label">Upload Student ID (Image)</label>
+                                                            <input type="file" class="form-control" id="id_card" name="id_card" accept="image/*" required>
+                                                            <div class="form-text">Please upload a clear image of your student ID for verification.</div>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="purpose" class="form-label">Purpose of Request</label>
+                                                            <select class="form-select" id="purpose" name="purpose" required>
+                                                                <option value="">Select Purpose</option>
+                                                                <option value="Research">Research</option>
+                                                                <option value="Academic Project">Academic Project</option>
+                                                                <option value="Thesis Reference">Thesis Reference</option>
+                                                                <option value="Other">Other</option>
+                                                            </select>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="other_purpose" class="form-label">If Other, please specify</label>
+                                                            <textarea class="form-control" id="other_purpose" name="other_purpose" rows="2"></textarea>
+                                                        </div>
+                                                        
+                                                        <div class="alert alert-warning">
+                                                            <i class="fas fa-exclamation-triangle"></i> By submitting this request, you agree to:
+                                                            <ul class="mb-0 mt-2">
+                                                                <li>Use the manuscript for educational purposes only</li>
+                                                                <li>Not distribute or share the manuscript with others</li>
+                                                                <li>Properly cite the work if used in your own research</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                        <button type="submit" class="btn btn-primary">Submit Request</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>';
+                                    echo '</div>';
+                                }
+                            } else {
+                                echo '<div class="alert alert-info">No research papers found matching your criteria.</div>';
+                            }
+                        } else {
+                            // Display recent research
+                            if ($recent_research->num_rows > 0) {
+                                while ($research = $recent_research->fetch_assoc()) {
+                                    echo '<div class="card mb-3">';
+                                    echo '<div class="card-header bg-light">';
+                                    echo '<h5 class="card-title">' . $research['title'] . '</h5>';
+                                    echo '<h6 class="card-subtitle mb-2 text-muted">Authors: ' . $research['authors'] . ' | ' . $research['year_published'] . '</h6>';
+                                    echo '</div>';
+                                    echo '<div class="card-body">';
+                                    echo '<p class="card-text">' . substr($research['abstract'], 0, 300) . '...</p>';
+                                    echo '</div>';
+                                    echo '<div class="card-footer bg-light">';
+                                    echo '<small class="text-muted">Department: ' . $research['department'] . ' | Uploaded by: ' . $research['full_name'] . '</small>';
+                                    echo '<div class="mt-2"><a href="../login.php" class="btn btn-sm btn-primary">Login to View Full Paper</a></div>';
+                                    echo '</div>';
+                                    echo '</div>';
+                                }
+                            } else {
+                                echo '<div class="alert alert-info">No research papers available.</div>';
+                            }
+                        }
+                        ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <footer class="bg-dark text-white mt-5 py-3">
+        <div class="container text-center">
+            <p>&copy; <?php echo date('Y'); ?> NEUST Repository System. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
