@@ -1,38 +1,19 @@
 <?php
-require_once '../includes/session.php';
-
-// Only admin allowed
-if (!is_logged_in() || $_SESSION['role'] !== 'admin') {
-    header("Location: ../login.php?error=unauthorized");
-    exit;
-}
+require_once '../includes/db_connect.php';
+session_start();
 
 if (isset($_GET['id']) && isset($_GET['action'])) {
     $id = intval($_GET['id']);
-    $action = $_GET['action'];
+    $action = $_GET['action'] === 'approve' ? 'Approved' : 'Rejected';
 
-    if ($action == 'approve') {
-        $status = 'approved';
-    } elseif ($action == 'reject') {
-        $status = 'rejected';
-    } else {
-        header("Location: admin_verify.php?error=invalid");
-        exit;
-    }
+    $stmt = $conn->prepare("UPDATE student_requests SET status = ? WHERE id = ?");
+    $stmt->bind_param("si", $action, $id);
+    $stmt->execute();
+    $stmt->close();
 
-    $sql = "UPDATE users SET verification_status = ? WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("si", $status, $id);
-
-    if ($stmt->execute()) {
-        header("Location: admin_verify.php?success=$status");
-        exit;
-    } else {
-        header("Location: admin_verify.php?error=db");
-        exit;
-    }
-} else {
-    header("Location: admin_verify.php?error=missing");
-    exit;
+    $_SESSION['success_message'] = "Request has been {$action} successfully.";
 }
+
+header("Location: dashboard.php");
+exit;
 ?>

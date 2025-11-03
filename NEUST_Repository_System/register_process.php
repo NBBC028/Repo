@@ -12,20 +12,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
 
-    // Check empty fields
+    // Validate required fields
     if (empty($full_name) || empty($username) || empty($email) || empty($role) || empty($department) || empty($password) || empty($confirm_password)) {
         header("Location: register.php?error=empty");
         exit;
     }
 
-    // Password check
+    // Password confirmation check
     if ($password !== $confirm_password) {
         header("Location: register.php?error=password");
         exit;
     }
 
-    // Check existing username or email
-    $stmt = $conn->prepare("SELECT id FROM users WHERE username=? OR email=?");
+    // Check if username or email already exists
+    $stmt = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
     $stmt->bind_param("ss", $username, $email);
     $stmt->execute();
     $stmt->store_result();
@@ -35,27 +35,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     $stmt->close();
 
-    // Handle file upload (ID image)
-    if (isset($_FILES['verification_id']) && $_FILES['verification_id']['error'] == 0) {
-        $allowed = ['jpg','jpeg','png'];
+    // File upload handling (Verification ID)
+    if (isset($_FILES['verification_id']) && $_FILES['verification_id']['error'] === 0) {
+        $allowed = ['jpg', 'jpeg', 'png'];
         $file_name = $_FILES['verification_id']['name'];
         $file_tmp = $_FILES['verification_id']['tmp_name'];
         $file_size = $_FILES['verification_id']['size'];
         $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
 
-        if (!in_array($file_ext, $allowed) || $file_size > 2*1024*1024) { // 2MB limit
+        if (!in_array($file_ext, $allowed) || $file_size > 2 * 1024 * 1024) { // 2MB limit
             header("Location: register.php?error=file");
             exit;
         }
 
-        // Create folder if not exists
         $upload_dir = "uploads/ids/";
         if (!is_dir($upload_dir)) {
             mkdir($upload_dir, 0777, true);
         }
 
-        $new_file_name = uniqid("id_").".".$file_ext;
-        $file_path = $upload_dir.$new_file_name;
+        $new_file_name = uniqid("id_") . "." . $file_ext;
+        $file_path = $upload_dir . $new_file_name;
 
         if (!move_uploaded_file($file_tmp, $file_path)) {
             header("Location: register.php?error=file");
@@ -66,15 +65,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit;
     }
 
-    // Insert user (is_verified = 0 by default)
+    // Determine status based on role
+    // Faculty = Pending approval
+    // Student = Auto approved
+    $status = ($role === 'faculty') ? 'Pending' : 'Approved';
+
+    // Hash password securely
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+
+    // Insert into database
     $stmt = $conn->prepare("INSERT INTO users 
-        (full_name, username, email, role, department, year_section, verification_id, password, is_verified, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())");
-    $stmt->bind_param("ssssssss", $full_name, $username, $email, $role, $department, $year_section, $file_path, $hashed_password);
+        (full_name, username, email, role, department, year_section, verification_id, password, status, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+    $stmt->bind_param("sssssssss", 
+        $full_name, $username, $email, $role, $department, $year_section, $file_path, $hashed_password, $status
+    );
 
     if ($stmt->execute()) {
-        header("Location: login.php?success=registered");
+        // If registration success
+        if ($role === 'faculty') {
+            header("Location: register.php?success=pending"); // show “awaiting approval” message
+        } else {
+            header("Location: login.php?success=registered");
+        }
         exit;
     } else {
         header("Location: register.php?error=unknown");

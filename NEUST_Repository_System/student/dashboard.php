@@ -1,487 +1,279 @@
 <?php
 require_once '../includes/session.php';
-require_once '../includes/db.php';
-require_once '../includes/functions.php';
+require_once '../includes/functions.php'; // contains sanitize_input() and other helpers
 
-// Restrict access to student only
-restrict_access(['student']);
-
-// Handle rating submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rating'], $_POST['research_id'])) {
-    $research_id = intval($_POST['research_id']);
-    $rating = intval($_POST['rating']);
-    $user_id = $_SESSION['user_id'];
-
-    if ($rating >= 1 && $rating <= 5) {
-        $stmt = $conn->prepare("
-            INSERT INTO research_ratings (research_id, user_id, rating) 
-            VALUES (?, ?, ?)
-            ON DUPLICATE KEY UPDATE rating = VALUES(rating), updated_at = CURRENT_TIMESTAMP
-        ");
-        $stmt->bind_param("iii", $research_id, $user_id, $rating);
-        $stmt->execute();
-        $stmt->close();
-    }
-}
-
-// Handle Add to Favorite
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['favorite_research_id'])) {
-    $research_id = intval($_POST['favorite_research_id']);
-    $user_id = $_SESSION['user_id'];
-
-    $stmt = $conn->prepare("
-        INSERT INTO research_favorites (user_id, research_id) 
-        VALUES (?, ?)
-        ON DUPLICATE KEY UPDATE created_at = NOW()
-    ");
-    $stmt->bind_param("ii", $user_id, $research_id);
-    $stmt->execute();
-    $stmt->close();
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit;
-}
-
-// Get favorite research IDs for current user
-$fav_result = $conn->query("SELECT research_id FROM research_favorites WHERE user_id = " . intval($_SESSION['user_id']));
-$favorites = [];
-while ($row = $fav_result->fetch_assoc()) {
-    $favorites[] = $row['research_id'];
-}
-
-// Get favorite research details (if any)
-$fav_research = null;
-if (!empty($favorites)) {
-    $fav_ids = implode(",", array_map('intval', $favorites));
-    $fav_research = $conn->query("
-        SELECT r.*, u.full_name, u.year_section
-        FROM research r
-        JOIN users u ON r.uploaded_by = u.id
-        WHERE r.id IN ($fav_ids)
-        ORDER BY FIELD(r.id, $fav_ids)
-    ");
-}
-
-// Get recent research papers with ratings
+// Get all approved research papers
 $recent_research = $conn->query("
-    SELECT r.*, u.full_name, u.year_section,
-           COALESCE(AVG(rr.rating), 0) AS avg_rating, COUNT(rr.id) AS rating_count
-    FROM research r
-    JOIN users u ON r.uploaded_by = u.id
-    LEFT JOIN research_ratings rr ON rr.research_id = r.id
-    WHERE r.status = 'public'
-    GROUP BY r.id
+    SELECT r.id, r.title, r.abstract, r.authors, r.department, r.year_published, u.full_name 
+    FROM research r 
+    JOIN users u ON r.uploaded_by = u.id 
+    WHERE r.status = 'approved'
     ORDER BY r.created_at DESC
     LIMIT 10
 ");
 
-// Get research papers by department
-$student_department = $conn->real_escape_string($_SESSION['department']);
-$department_research = $conn->query("
-    SELECT r.*, u.full_name, u.year_section,
-           COALESCE(AVG(rr.rating), 0) AS avg_rating, COUNT(rr.id) AS rating_count
-    FROM research r
-    JOIN users u ON r.uploaded_by = u.id
-    LEFT JOIN research_ratings rr ON rr.research_id = r.id
-    WHERE r.department = '$student_department' 
-      AND r.status = 'public'
-    GROUP BY r.id
-    ORDER BY r.created_at DESC
-    LIMIT 5
+// Get departments for filter
+$departments = $conn->query("
+    SELECT DISTINCT department 
+    FROM research 
+    WHERE status = 'approved'
+    ORDER BY department
 ");
+
+// Helper function for search
+function search_research($keywords, $department, $year, $conn) {
+    $sql = "
+        SELECT r.id, r.title, r.abstract, r.authors, r.department, r.year_published, u.full_name 
+        FROM research r 
+        JOIN users u ON r.uploaded_by = u.id 
+        WHERE r.status = 'approved'
+    ";
+
+    if (!empty($keywords)) {
+        $keywords = $conn->real_escape_string($keywords);
+        $sql .= " AND (r.title LIKE '%$keywords%' OR r.abstract LIKE '%$keywords%' OR r.authors LIKE '%$keywords%')";
+    }
+    if (!empty($department)) {
+        $department = $conn->real_escape_string($department);
+        $sql .= " AND r.department = '$department'";
+    }
+    if (!empty($year)) {
+        $year = $conn->real_escape_string($year);
+        $sql .= " AND r.year_published = '$year'";
+    }
+
+    $sql .= " ORDER BY r.created_at DESC";
+
+    return $conn->query($sql);
+}
 ?>
 
-<?php include '../includes/header.php'; ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Access - NEUST Repository System</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
 
-<style>
-.list-group-item.bg-primary {
-    color: #fff;
-    background-color: var(--bs-primary) !important;
-    border-color: rgba(0,0,0,0.05);
-}
-.list-group-item.bg-primary:hover,
-.list-group-item.bg-primary:focus {
-    background-color: rgba(13,110,253,0.9) !important;
-    color: #fff !important;
-    text-decoration: none;
-}
-.modal-header.bg-primary {
-    background-color: var(--bs-primary) !important;
-    color: #fff;
-}
-.btn-primary {
-    background-color: var(--bs-primary) !important;
-    border-color: var(--bs-primary) !important;
-}
-.btn-primary:hover {
-    background-color: #0b5ed7 !important;
-    border-color: #0a58ca !important;
-}
-</style>
+<body>
+<header>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+        <a class="navbar-brand" href="../index.php">
+            <img src="http://localhost/mgt%20repo/img/neust_logo.png" alt="NEUST Logo" height="40">
+            <img src="https://scontent.fcrk3-4.fna.fbcdn.net/v/t1.15752-9/552581069_2011437836268230_2095169435658182307_n.png?stp=dst-png_s480x480&_nc_cat=108&ccb=1-7&_nc_sid=0024fc&_nc_ohc=RFTC0FtlFD4Q7kNvwEOgxNP&_nc_oc=AdlahWZ7H5zNFTrs9GwoA_7D_88GxfM-WBs0v3hERJ0q-vWSno9dzVN9dsXFeH3GvTo&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent.fcrk3-4.fna&oh=03_Q7cD3gEO_gTiW1DkAop2jWFsLzInFbaqAxBWNQ1jzdDbJTTOYw&oe=6926D5B8" alt="NEUST Logo" height="40">
+                    <img src="https://scontent.fcrk3-3.fna.fbcdn.net/v/t1.15752-9/552295913_801033142295719_7514254484468521732_n.png?stp=dst-png_s480x480&_nc_cat=100&ccb=1-7&_nc_sid=0024fc&_nc_ohc=KrR3CxfhIYAQ7kNvwHI-ktX&_nc_oc=AdnAbgfXcDBh8izv2co2x9Ik_5LUglcYXDbOJDtfo7VG1Iy5JoLVY5bTV18zfHtu5uQ&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent.fcrk3-3.fna&oh=03_Q7cD3gEHtRpd0vI9UtLTkEiIXNEoseUCi477Y_3T468TUC-AaA&oe=6926CD3F" alt="NEUST Logo" height="40">
+                    <img src="https://scontent.fcrk3-2.fna.fbcdn.net/v/t1.15752-9/552085111_803108978879860_1283386021329109856_n.png?stp=dst-png_s480x480&_nc_cat=101&ccb=1-7&_nc_sid=0024fc&_nc_ohc=oE3Vm4UiRD0Q7kNvwFDZ6ZE&_nc_oc=AdnU8vCmnVqdO1_Aehkk9zdRbRh9MFU9pVjnopi1GnmlayOGymFxwdKR4VUc3eyi-28&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent.fcrk3-2.fna&oh=03_Q7cD3gGj5vv9kHPSH9kExowL_SwPSqypW-uKm6VsSwhZSTot-g&oe=6926FEB9" alt="NEUST Logo" height="40">
+                </a>
+                 
 
-<div class="container-fluid">
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white">
-            <h3 class="mb-0">Student Dashboard</h3>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto align-items-center">
+                <li class="nav-item">
+                    <a class="nav-link active" href="dashboard.php">
+                        <i class="fas fa-book"></i> Browse
+                    </a>
+                </li>
+
+                <!-- 🔔 Notification Bell Dropdown -->
+                <li class="nav-item dropdown ms-3">
+                    <a class="nav-link position-relative" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-bell"></i>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="notifCount">0</span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="notificationDropdown" style="width: 300px;">
+                        <li class="dropdown-header bg-primary text-white text-center">Notifications</li>
+                        <div id="notifList" class="p-2" style="max-height: 300px; overflow-y: auto;">
+                            <li class="text-center text-muted small">No new notifications</li>
+                        </div>
+                    </ul>
+                </li>
+            </ul>
         </div>
     </div>
+</nav>
+</header>
 
-    <div class="row">
-        <!-- Recent Research -->
-        <div class="col-md-8 mb-4">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Recent Research Papers</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Title</th>
-                                    <th>Authors</th>
-                                    <th>Department</th>
-                                    <th>Year</th>
-                                    <th>Year & Section</th>
-                                    <th>Uploaded By</th>
-                                    <th>Rating</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if ($recent_research && $recent_research->num_rows > 0): ?>
-                                    <?php while ($research = $recent_research->fetch_assoc()): ?>
-                                        <?php 
-                                            $file_path = "../" . $research['file_path'];
-                                            $file_ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
-                                        ?>
-                                        <tr>
-                                            <td><?php echo htmlspecialchars($research['title']); ?></td>
-                                            <td><?php echo htmlspecialchars($research['authors']); ?></td>
-                                            <td><?php echo htmlspecialchars($research['department']); ?></td>
-                                            <td><?php echo htmlspecialchars($research['year_published']); ?></td>
-                                            <td><?php echo !empty($research['year_section']) ? htmlspecialchars($research['year_section']) : '-'; ?></td>
-                                            <td><?php echo htmlspecialchars($research['full_name']); ?></td>
-                                            <td>✰ <?php echo number_format($research['avg_rating'], 1); ?> (<?php echo $research['rating_count']; ?>)</td>
-                                            <td>
-                                                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#researchModal<?php echo $research['id']; ?>">
-                                                    <i class="fas fa-eye"></i> View Abstract
-                                                </button>
-                                                <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#requestModal<?php echo $research['id']; ?>">
-                                                    <i class="fas fa-file-pdf"></i> Request Full Manuscript
-                                                </button>
-                                            </td>
-                                        </tr>
+<main class="container mt-4">
 
-                                        <!-- Research Modal (Abstract Only) -->
-                                        <div class="modal fade" id="researchModal<?php echo $research['id']; ?>" tabindex="-1" aria-hidden="true">
-                                            <div class="modal-dialog modal-xl">
-                                                <div class="modal-content">
-                                                    <div class="modal-header bg-primary text-white">
-                                                        <h5 class="modal-title"><?php echo htmlspecialchars($research['title']); ?></h5>
-                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                    </div>
-                                                    <div class="modal-body">
-                                                        <div class="row">
-                                                            <div class="col-md-6">
-                                                                <div class="alert alert-info">
-                                                                    <i class="fas fa-info-circle"></i> Full manuscript access requires verification. Please submit a request to view the complete document.
-                                                                </div>
-                                                                <div class="text-center mb-3">
-                                                                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#requestModal<?php echo $research['id']; ?>">
-                                                                        <i class="fas fa-file-download"></i> Request Full Manuscript
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                            <div class="col-md-6">
-                                                                <p><strong>Authors:</strong> <?php echo htmlspecialchars($research['authors']); ?></p>
-                                                                <p><strong>Department:</strong> <?php echo htmlspecialchars($research['department']); ?></p>
-                                                                <p><strong>Year Published:</strong> <?php echo htmlspecialchars($research['year_published']); ?></p>
-                                                                <p><strong>Year & Section:</strong> <?php echo !empty($research['year_section']) ? htmlspecialchars($research['year_section']) : '-'; ?></p>
-                                                                <p><strong>Uploaded By:</strong> <?php echo htmlspecialchars($research['full_name']); ?></p>
-                                                                <hr>
-                                                                <p><strong>Abstract:</strong></p>
-                                                                <div class="abstract-container p-3 bg-light rounded">
-                                                                    <?php echo nl2br(htmlspecialchars($research['abstract'])); ?>
-                                                                </div>
+<?php if (isset($_SESSION['success_message'])): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <?php 
+            echo $_SESSION['success_message']; 
+            unset($_SESSION['success_message']);
+        ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
 
-                                                                <hr>
-                                                                <!-- Rating Form -->
-                                                                <form method="POST" class="d-inline">
-                                                                    <input type="hidden" name="research_id" value="<?php echo $research['id']; ?>">
-                                                                    <label><strong>Rate this Research:</strong></label><br>
-                                                                    <?php for ($i=1; $i<=5; $i++): ?>
-                                                                        <button type="submit" name="rating" value="<?php echo $i; ?>" class="btn btn-sm <?php echo ($i <= round($research['avg_rating'])) ? 'btn-warning' : 'btn-outline-secondary'; ?>">✰</button>
-                                                                    <?php endfor; ?>
-                                                                </form>
+<?php if (isset($_SESSION['error_messages']) && is_array($_SESSION['error_messages'])): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <ul class="mb-0">
+            <?php 
+                foreach ($_SESSION['error_messages'] as $error) {
+                    echo '<li>' . $error . '</li>';
+                }
+                unset($_SESSION['error_messages']);
+            ?>
+        </ul>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
 
-                                                                <!-- Add to Favorite -->
-                                                                <form method="POST" class="mt-2">
-                                                                    <input type="hidden" name="favorite_research_id" value="<?php echo $research['id']; ?>">
-                                                                    <button type="submit" class="btn btn-sm <?php echo in_array($research['id'], $favorites) ? 'btn-success' : 'btn-outline-primary'; ?>">
-                                                                        <?php echo in_array($research['id'], $favorites) ? '★ Favorited' : '☆ Add to Favorites'; ?>
-                                                                    </button>
-                                                                </form>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div class="modal-footer">
-                                                        <a href="<?php echo $file_path; ?>" class="btn btn-primary" target="_blank">
-                                                            <i class="fas fa-file-pdf"></i> View Full Research
-                                                        </a>
-                                                        <a href="<?php echo $file_path; ?>" class="btn btn-primary" download>
-                                                            <i class="fas fa-download"></i> Download
-                                                        </a>
-                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <!-- Request Modal -->
-                                        <div class="modal fade" id="requestModal<?php echo $research['id']; ?>" tabindex="-1" aria-hidden="true">
-                                            <div class="modal-dialog">
-                                                <div class="modal-content">
-                                                    <div class="modal-header bg-primary text-white">
-                                                        <h5 class="modal-title">Request Full Manuscript</h5>
-                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                    </div>
-                                                    <form action="request_manuscript.php" method="post">
-                                                        <div class="modal-body">
-                                                            <input type="hidden" name="research_id" value="<?php echo $research['id']; ?>">
-                                                            <input type="hidden" name="student_id" value="<?php echo base64_encode($_SESSION['user_id']); ?>">
-                                                            
-                                                            <div class="mb-3">
-                                                                <label for="purpose" class="form-label">Purpose of Request</label>
-                                                                <select name="purpose" id="purpose" class="form-select" required>
-                                                                    <option value="">Select Purpose</option>
-                                                                    <option value="Research">Research</option>
-                                                                    <option value="Academic Project">Academic Project</option>
-                                                                    <option value="Thesis Reference">Thesis Reference</option>
-                                                                    <option value="Other">Other</option>
-                                                                </select>
-                                                            </div>
-                                                            
-                                                            <div class="mb-3">
-                                                                <label for="other_purpose" class="form-label">If Other, please specify</label>
-                                                                <textarea name="other_purpose" id="other_purpose" class="form-control" rows="2"></textarea>
-                                                            </div>
-                                                            
-                                                            <div class="alert alert-warning">
-                                                                <i class="fas fa-exclamation-triangle"></i> By submitting this request, you agree to:
-                                                                <ul class="mb-0 mt-2">
-                                                                    <li>Use the manuscript for educational purposes only</li>
-                                                                    <li>Not distribute or share the manuscript with others</li>
-                                                                    <li>Properly cite the work if used in your own research</li>
-                                                                </ul>
-                                                            </div>
-                                                        </div>
-                                                        <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                            <button type="submit" class="btn btn-primary">Submit Request</button>
-                                                        </div>
-                                                    </form>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    <?php endwhile; ?>
-                                <?php else: ?>
-                                    <tr><td colspan="8" class="text-center">No research papers found.</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">NEUST TALAVERA OFF-CAMPUS DIGITAL REPOSITORY OF COMPLETED RESEARCH PROJECT</h5>
+    </div>
+    <div class="card-body">
+        <p class="lead">Browse Research Abstracts from Nueva Ecija University of Science and Technology.</p>
+    </div>
+</div>
 
-                    <div class="text-end">
-                        <a href="../views/search.php" class="btn btn-primary">Advanced Search</a>
-                    </div>
-                </div>
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Search Abstracts</h5>
             </div>
-        </div>
-        
-        <!-- Research by Department -->
-        <div class="col-md-4 mb-4">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Research in Your Department</h5>
-                </div>
-                <div class="card-body">
-                    <div class="list-group">
-                        <?php if ($department_research && $department_research->num_rows > 0): ?>
-                            <?php while ($r = $department_research->fetch_assoc()): ?>
-                                <?php 
-                                    $dept_file_path = "../" . $r['file_path'];
-                                    $dept_file_ext = strtolower(pathinfo($dept_file_path, PATHINFO_EXTENSION));
-                                ?>
-                                <a href="#" class="list-group-item list-group-item-action bg-primary text-white mb-2" data-bs-toggle="modal" data-bs-target="#deptResearchModal<?php echo $r['id']; ?>">
-                                    <div class="d-flex w-100 justify-content-between">
-                                        <h6 class="mb-1 mb-0"><?php echo htmlspecialchars($r['title']); ?></h6>
-                                        <small><?php echo htmlspecialchars($r['year_published']); ?></small>
-                                    </div>
-                                    <small>Year & Section: <?php echo !empty($r['year_section']) ? htmlspecialchars($r['year_section']) : '-'; ?> | ✰ <?php echo number_format($r['avg_rating'], 1); ?> (<?php echo $r['rating_count']; ?>)</small>
-                                </a>
-
-                                <!-- Department Modal -->
-                                <div class="modal fade" id="deptResearchModal<?php echo $r['id']; ?>" tabindex="-1" aria-hidden="true">
-                                    <div class="modal-dialog modal-xl">
-                                        <div class="modal-content">
-                                            <div class="modal-header bg-primary text-white">
-                                                <h5 class="modal-title"><?php echo htmlspecialchars($r['title']); ?></h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                <div class="row">
-                                                    <div class="col-md-6">
-                                                        <?php if ($dept_file_ext === 'pdf'): ?>
-                                                            <embed src="<?php echo $dept_file_path; ?>#page=1" type="application/pdf" width="100%" height="400px" />
-                                                        <?php elseif ($dept_file_ext === 'doc' || $dept_file_ext === 'docx'): ?>
-                                                            <iframe src="https://docs.google.com/gview?url=http://localhost/NEUST_Repository_System/<?php echo $r['file_path']; ?>&embedded=true" 
-                                                                    style="width:100%; height:400px;" frameborder="0"></iframe>
-                                                        <?php else: ?>
-                                                            <p class="text-danger">Preview not available. Please download the file to view.</p>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <p><strong>Authors:</strong> <?php echo htmlspecialchars($r['authors']); ?></p>
-                                                        <p><strong>Department:</strong> <?php echo htmlspecialchars($r['department']); ?></p>
-                                                        <p><strong>Year Published:</strong> <?php echo htmlspecialchars($r['year_published']); ?></p>
-                                                        <p><strong>Year & Section:</strong> <?php echo !empty($r['year_section']) ? htmlspecialchars($r['year_section']) : '-'; ?></p>
-                                                        <p><strong>Uploaded By:</strong> <?php echo htmlspecialchars($r['full_name']); ?></p>
-                                                        <hr>
-                                                        <p><strong>Abstract:</strong></p>
-                                                        <p><?php echo nl2br(htmlspecialchars($r['abstract'])); ?></p>
-
-                                                        <hr>
-                                                        <form method="POST" class="d-inline">
-                                                            <input type="hidden" name="research_id" value="<?php echo $r['id']; ?>">
-                                                            <label><strong>Rate this Research:</strong></label><br>
-                                                            <?php for ($i=1; $i<=5; $i++): ?>
-                                                                <button type="submit" name="rating" value="<?php echo $i; ?>" class="btn btn-sm <?php echo ($i <= round($r['avg_rating'])) ? 'btn-warning' : 'btn-outline-secondary'; ?>">✰</button>
-                                                            <?php endfor; ?>
-                                                        </form>
-
-                                                        <form method="POST" class="mt-2">
-                                                            <input type="hidden" name="favorite_research_id" value="<?php echo $r['id']; ?>">
-                                                            <button type="submit" class="btn btn-sm <?php echo in_array($r['id'], $favorites) ? 'btn-success' : 'btn-outline-primary'; ?>">
-                                                                <?php echo in_array($r['id'], $favorites) ? '★ Favorited' : '☆ Add to Favorites'; ?>
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <a href="<?php echo $dept_file_path; ?>" class="btn btn-primary" target="_blank"><i class="fas fa-file-pdf"></i> View Full Research</a>
-                                                <a href="<?php echo $dept_file_path; ?>" class="btn btn-primary" download><i class="fas fa-download"></i> Download</a>
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endwhile; ?>
-                        <?php else: ?>
-                            <div class="list-group-item">No research papers found in your department.</div>
-                        <?php endif; ?>
+            <div class="card-body">
+                <form action="dashboard.php" method="get">
+                    <div class="mb-3">
+                        <label for="keywords" class="form-label">Keywords</label>
+                        <input type="text" class="form-control" id="keywords" name="keywords" 
+                               value="<?php echo isset($_GET['keywords']) ? htmlspecialchars($_GET['keywords']) : ''; ?>" 
+                               placeholder="Enter keywords...">
                     </div>
-                </div>
+                    <div class="mb-3">
+                        <label for="department" class="form-label">Department</label>
+                        <select class="form-select" id="department" name="department">
+                            <option value="">All Departments</option>
+                            <?php while ($dept = $departments->fetch_assoc()): ?>
+                                <option value="<?php echo htmlspecialchars($dept['department']); ?>" 
+                                    <?php echo (isset($_GET['department']) && $_GET['department'] == $dept['department']) ? 'selected' : ''; ?> >
+                                    <?php echo htmlspecialchars($dept['department']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="year" class="form-label">Year Published</label>
+                        <select class="form-select" id="year" name="year">
+                            <option value="">All Years</option>
+                            <?php for ($i = date('Y'); $i >= 2000; $i--): ?>
+                                <option value="<?php echo $i; ?>" 
+                                        <?php echo (isset($_GET['year']) && $_GET['year'] == $i) ? 'selected' : ''; ?>>
+                                    <?php echo $i; ?>
+                                </option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Search</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
-    <!-- Favorites Section -->
-    <div class="card mt-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">My Favorite Research Papers</h5>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-striped align-middle">
-                    <thead>
-                        <tr>
-                            <th>Title</th>
-                            <th>Authors</th>
-                            <th>Department</th>
-                            <th>Year</th>
-                            <th>Year & Section</th>
-                            <th>Uploaded By</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if ($fav_research && $fav_research->num_rows > 0): ?>
-                            <?php while ($fav = $fav_research->fetch_assoc()): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($fav['title']); ?></td>
-                                    <td><?php echo htmlspecialchars($fav['authors']); ?></td>
-                                    <td><?php echo htmlspecialchars($fav['department']); ?></td>
-                                    <td><?php echo htmlspecialchars($fav['year_published']); ?></td>
-                                    <td><?php echo !empty($fav['year_section']) ? htmlspecialchars($fav['year_section']) : '-'; ?></td>
-                                    <td><?php echo htmlspecialchars($fav['full_name']); ?></td>
-                                </tr>
-                            <?php endwhile; ?>
-                        <?php else: ?>
-                            <tr><td colspan="6" class="text-center">You have not added any favorites yet.</td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <img src="http://localhost/mgt%20repo/img/neust_logo.png" alt="NEUST Logo" height="40">
+                    Research Abstracts
+                </h5>
+            </div>
+            <div class="card-body">
+                <?php
+                if (isset($_GET['keywords']) || isset($_GET['department']) || isset($_GET['year'])) {
+                    $keywords = isset($_GET['keywords']) ? sanitize_input($_GET['keywords']) : '';
+                    $department = isset($_GET['department']) ? sanitize_input($_GET['department']) : '';
+                    $year = isset($_GET['year']) ? sanitize_input($_GET['year']) : '';
+
+                    $search_results = search_research($keywords, $department, $year, $conn);
+
+                    if ($search_results && $search_results->num_rows > 0) {
+                        $research_list = $search_results;
+                    } else {
+                        $research_list = [];
+                        echo '<div class="alert alert-info">No research papers found matching your search criteria.</div>';
+                    }
+                } else {
+                    $research_list = $recent_research;
+                }
+
+                if ($research_list && $research_list->num_rows > 0) {
+                    while ($research = $research_list->fetch_assoc()) {
+                        ?>
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h5 class="card-title"><?php echo htmlspecialchars($research['title']); ?></h5>
+                                <h6 class="card-subtitle mb-2 text-muted">
+                                    Authors: <?php echo htmlspecialchars($research['authors']); ?> | <?php echo $research['year_published']; ?>
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text"><?php echo nl2br(htmlspecialchars($research['abstract'])); ?></p>
+                            </div>
+                            <div class="card-footer bg-light">
+                                <small class="text-muted">Department: <?php echo htmlspecialchars($research['department']); ?></small>
+                            </div>
+                        </div>
+                        <?php
+                    }
+                } else {
+                    echo '<div class="alert alert-info">No research abstracts available at this time.</div>';
+                }
+                ?>
             </div>
         </div>
     </div>
 </div>
+</main>
 
-    <!-- Add Manuscript Request Modals -->
-    <?php if ($recent_research && $recent_research->num_rows > 0): ?>
-        <?php $recent_research->data_seek(0); ?>
-        <?php while ($research = $recent_research->fetch_assoc()): ?>
-            <!-- Manuscript Request Modal -->
-            <div class="modal fade" id="requestModal<?php echo $research['id']; ?>" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog">
-                    <div class="modal-content">
-                        <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title">Request Full Manuscript</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <form action="request_manuscript.php" method="post">
-                            <div class="modal-body">
-                                <input type="hidden" name="research_id" value="<?php echo $research['id']; ?>">
-                                <input type="hidden" name="student_id" value="<?php echo base64_encode($_SESSION['user_id']); ?>">
-                                
-                                <div class="alert alert-info">
-                                    <i class="fas fa-info-circle"></i> Please provide the purpose of your request to access the full manuscript.
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="purpose<?php echo $research['id']; ?>" class="form-label">Purpose of Request</label>
-                                    <select class="form-select" id="purpose<?php echo $research['id']; ?>" name="purpose" required>
-                                        <option value="">Select Purpose</option>
-                                        <option value="Research">Research</option>
-                                        <option value="Academic Project">Academic Project</option>
-                                        <option value="Thesis Reference">Thesis Reference</option>
-                                        <option value="Other">Other</option>
-                                    </select>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="other_purpose<?php echo $research['id']; ?>" class="form-label">If Other, please specify</label>
-                                    <textarea class="form-control" id="other_purpose<?php echo $research['id']; ?>" name="other_purpose" rows="2"></textarea>
-                                </div>
-                                
-                                <div class="alert alert-warning">
-                                    <i class="fas fa-exclamation-triangle"></i> By submitting this request, you agree to:
-                                    <ul class="mb-0 mt-2">
-                                        <li>Use the manuscript for educational purposes only</li>
-                                        <li>Not distribute or share the manuscript with others</li>
-                                        <li>Properly cite the work if used in your own research</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="submit" class="btn btn-primary">Submit Request</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        <?php endwhile; ?>
-    <?php endif; ?>
+<footer class="bg-blue text-white mt-5 py-3">
+    <div class="container text-center">
+    </div>
+</footer>
 
-<?php include '../includes/footer.php'; ?>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- 🔔 Notification Fetch Script -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    function loadNotifications() {
+        // Replace this later with your backend PHP fetch
+        const notifList = document.getElementById("notifList");
+        const notifCount = document.getElementById("notifCount");
+
+        // Example: Dummy notifications
+        const dummyData = [
+            { message: "Your research submission has been approved.", date: "2025-11-01 14:20" },
+            { message: "Admin viewed your manuscript request.", date: "2025-10-31 10:15" }
+        ];
+
+        notifList.innerHTML = "";
+        notifCount.textContent = dummyData.length;
+
+        dummyData.forEach(n => {
+            const item = document.createElement("li");
+            item.classList.add("dropdown-item", "small");
+            item.innerHTML = `<strong>${n.message}</strong><br><span class="text-muted">${n.date}</span>`;
+            notifList.appendChild(item);
+        });
+    }
+
+    loadNotifications();
+});
+</script>
+
+</body>
+</html>

@@ -27,25 +27,30 @@ if (is_logged_in()) {
                 <div class="card shadow">
                     <div class="card-header bg-primary text-white text-center">
                         <img src="http://localhost/mgt%20repo/img/neust_logo.png" alt="NEUST Logo" height="80">
-                        <h3>NEUST-MGT Repository Complete Research Project System</h3>
+                        <h3 class="mt-2">NEUST-MGT Repository System</h3>
+                        <p class="mb-0 small">Complete Research Project Repository</p>
                     </div>
+
                     <div class="card-body">
                         <?php
                         if (isset($_GET['error'])) {
                             $error = '';
                             switch ($_GET['error']) {
-                                case 'empty': $error = 'Please fill in all fields.'; break;
+                                case 'empty': $error = 'Please fill in all required fields.'; break;
                                 case 'username': $error = 'Username already exists.'; break;
                                 case 'email': $error = 'Email already exists.'; break;
                                 case 'password': $error = 'Passwords do not match.'; break;
-                                case 'file': $error = 'Please upload a valid ID image (JPG, PNG, max 2MB).'; break;
-                                default: $error = 'An error occurred. Please try again.';
+                                case 'file': $error = 'Invalid file. Upload JPG or PNG under 2MB.'; break;
+                                default: $error = 'An unexpected error occurred. Please try again.';
                             }
                             echo display_alert($error, 'danger');
                         }
+
+                        if (isset($_GET['success']) && $_GET['success'] === 'registered') {
+                            echo display_alert('Registration successful! Please wait for admin verification before you can log in.', 'success');
+                        }
                         ?>
 
-                        <!-- Important: enctype added for file upload -->
                         <form action="register_process.php" method="post" enctype="multipart/form-data">
                             <div class="mb-3">
                                 <label for="full_name" class="form-label">Full Name</label>
@@ -76,9 +81,8 @@ if (is_logged_in()) {
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="fas fa-user-shield"></i></span>
                                     <select class="form-select" id="role" name="role" required onchange="toggleYearSection()">
-                                        <option value="student">Student</option>
                                         <option value="faculty">Faculty</option>
-                                        <option value="guest">Guest</option>
+                                        <!-- You can add: <option value="student">Student</option> -->
                                     </select>
                                 </div>
                             </div>
@@ -88,16 +92,16 @@ if (is_logged_in()) {
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="fas fa-building"></i></span>
                                     <select class="form-select" id="department" name="department" required>
+                                        <option value="" disabled selected>Select Department</option>
                                         <option value="Business Administration">Bachelor of Science in Business Administration</option>
                                         <option value="Information Technology">Bachelor of Science in Information Technology</option>
                                         <option value="Elementary Education">Bachelor of Elementary Education</option>
-                                        <option value="Other">Other</option>
                                     </select>
                                 </div>
                             </div>
 
                             <!-- Year & Section (for Students only) -->
-                            <div class="mb-3" id="year_section_field">
+                            <div class="mb-3" id="year_section_field" style="display:none;">
                                 <label for="year_section" class="form-label">Year & Section</label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="fas fa-graduation-cap"></i></span>
@@ -112,6 +116,7 @@ if (is_logged_in()) {
                                     <span class="input-group-text"><i class="fas fa-id-card"></i></span>
                                     <input type="file" class="form-control" id="verification_id" name="verification_id" accept=".jpg,.jpeg,.png" required>
                                 </div>
+                                <small class="text-muted">Upload a clear image of your Faculty ID or Valid ID (Max 2MB).</small>
                             </div>
 
                             <div class="mb-3">
@@ -130,11 +135,16 @@ if (is_logged_in()) {
                                 </div>
                             </div>
 
+                            <div class="alert alert-info text-center">
+                                <i class="fas fa-clock"></i> After registration, your account will be <strong>reviewed and verified</strong> by the administrator before you can log in.
+                            </div>
+
                             <div class="d-grid gap-2">
                                 <button type="submit" class="btn btn-primary">Register</button>
                             </div>
                         </form>
                     </div>
+
                     <div class="card-footer text-center">
                         <p>Already have an account? <a href="login.php">Login here</a></p>
                     </div>

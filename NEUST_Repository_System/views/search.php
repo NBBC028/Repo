@@ -7,6 +7,7 @@ require_once '../includes/session.php';
 require_once '../includes/functions.php';
 require_once '../includes/db.php';
 
+// ✅ Check login
 if (!is_logged_in()) {
     $_SESSION['message'] = "Please log in to access the search page.";
     $_SESSION['message_type'] = "warning";
@@ -14,35 +15,39 @@ if (!is_logged_in()) {
     exit;
 }
 
-// Get search parameters
+// ✅ Search filters
 $keyword = isset($_GET['keyword']) ? sanitize_input($_GET['keyword']) : '';
 $department = isset($_GET['department']) ? sanitize_input($_GET['department']) : '';
 $year = isset($_GET['year']) ? sanitize_input($_GET['year']) : '';
 $author = isset($_GET['author']) ? sanitize_input($_GET['author']) : '';
 $sort_by = isset($_GET['sort_by']) ? sanitize_input($_GET['sort_by']) : 'date_desc';
 
-// Pagination setup
+// ✅ Pagination
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $per_page = 10;
 $offset = ($page - 1) * $per_page;
 
-// Base query
-$query = "SELECT r.*, u.full_name as uploader 
+// ✅ Base Queries
+$query = "SELECT r.*, u.full_name AS uploader 
           FROM research r 
           LEFT JOIN users u ON r.uploaded_by = u.id 
           WHERE 1=1";
-$count_query = "SELECT COUNT(*) as total FROM research r WHERE 1=1";
+
+$count_query = "SELECT COUNT(*) AS total 
+                FROM research r 
+                LEFT JOIN users u ON r.uploaded_by = u.id 
+                WHERE 1=1";
 
 $params = [];
 $types = "";
 
-// 🔍 Filters
+// ✅ Filters
 if (!empty($keyword)) {
     $keyword_search = "%$keyword%";
-    $query .= " AND (r.title LIKE ? OR r.abstract LIKE ? OR r.keywords LIKE ?)";
-    $count_query .= " AND (r.title LIKE ? OR r.abstract LIKE ? OR r.keywords LIKE ?)";
-    $params = array_merge($params, [$keyword_search, $keyword_search, $keyword_search]);
-    $types .= "sss";
+    $query .= " AND (r.title LIKE ? OR r.abstract LIKE ? OR r.keywords LIKE ? OR r.authors LIKE ?)";
+    $count_query .= " AND (r.title LIKE ? OR r.abstract LIKE ? OR r.keywords LIKE ? OR r.authors LIKE ?)";
+    array_push($params, $keyword_search, $keyword_search, $keyword_search, $keyword_search);
+    $types .= "ssss";
 }
 
 if (!empty($department)) {
@@ -67,163 +72,180 @@ if (!empty($author)) {
     $types .= "s";
 }
 
-// 🧩 Role-based access control
+// ✅ Role-based access
 if ($_SESSION['role'] == 'faculty') {
-    // ✅ Faculty only sees research uploaded by themselves
     $query .= " AND r.uploaded_by = ?";
     $count_query .= " AND r.uploaded_by = ?";
     $params[] = $_SESSION['user_id'];
     $types .= "i";
 } elseif ($_SESSION['role'] == 'student') {
-    // Students can see only public or restricted research in their department
-    $query .= " AND (r.status = 'public' OR (r.status = 'restricted' AND r.department = ?))";
-    $count_query .= " AND (r.status = 'public' OR (r.status = 'restricted' AND r.department = ?))";
+    $query .= " AND (r.status = 'approved' OR (r.status = 'pending' AND r.department = ?))";
+    $count_query .= " AND (r.status = 'approved' OR (r.status = 'pending' AND r.department = ?))";
     $params[] = $_SESSION['department'];
     $types .= "s";
 } elseif ($_SESSION['role'] == 'guest') {
-    // Guests only see public research
-    $query .= " AND r.status = 'public'";
-    $count_query .= " AND r.status = 'public'";
+    $query .= " AND r.status = 'approved'";
+    $count_query .= " AND r.status = 'approved'";
 }
 
-// Sorting
+// ✅ Sorting
 switch ($sort_by) {
     case 'title_asc': $query .= " ORDER BY r.title ASC"; break;
     case 'title_desc': $query .= " ORDER BY r.title DESC"; break;
     case 'year_asc': $query .= " ORDER BY r.year_published ASC"; break;
     case 'year_desc': $query .= " ORDER BY r.year_published DESC"; break;
-    case 'date_asc': $query .= " ORDER BY r.created_at ASC"; break;
-    case 'date_desc':
-    default: $query .= " ORDER BY r.created_at DESC"; break;
+    case 'date_asc': $query .= " ORDER BY r.uploaded_on ASC"; break;
+    default: $query .= " ORDER BY r.uploaded_on DESC"; break;
 }
 
-// Count query
-$count_stmt = $conn->prepare($count_query);
-if (!empty($params)) {
-    $count_ref_params = [];
-    foreach ($params as $key => $value) {
-        $count_ref_params[$key] = &$params[$key];
+// ✅ Count total rows safely
+$total_rows = 0;
+if ($count_stmt = $conn->prepare($count_query)) {
+    if (!empty($params)) {
+        $count_stmt->bind_param($types, ...$params);
     }
-    if (!empty($count_ref_params)) $count_stmt->bind_param($types, ...$count_ref_params);
+    if ($count_stmt->execute()) {
+        $count_result = $count_stmt->get_result();
+        if ($count_result instanceof mysqli_result) {
+            $row = $count_result->fetch_assoc();
+            $total_rows = (int)$row['total'];
+        }
+    }
+    $count_stmt->close();
 }
-$count_stmt->execute();
-$count_result = $count_stmt->get_result();
-$total_rows = $count_result->fetch_assoc()['total'];
-$total_pages = ceil($total_rows / $per_page);
+$total_pages = max(1, ceil($total_rows / $per_page));
 
-// Main query with pagination
+// ✅ Pagination limits
 $query .= " LIMIT ? OFFSET ?";
-$main_params = $params;
-$main_params[] = $per_page;
-$main_params[] = $offset;
-$main_types = $types . "ii";
+$params_with_pagination = $params;
+$types_with_pagination = $types . "ii";
+$params_with_pagination[] = $per_page;
+$params_with_pagination[] = $offset;
 
+// ✅ Execute Main Query safely
+$result = false;
 $stmt = $conn->prepare($query);
-$ref_params = [];
-foreach ($main_params as $key => $value) {
-    $ref_params[$key] = &$main_params[$key];
+if ($stmt) {
+    $stmt->bind_param($types_with_pagination, ...$params_with_pagination);
+    if ($stmt->execute()) {
+        $result = $stmt->get_result();
+    }
 }
-$stmt->bind_param($main_types, ...$ref_params);
-$stmt->execute();
-$result = $stmt->get_result();
+
+include '../includes/header.php';
 ?>
 
-<?php include '../includes/header.php'; ?>
+<style>
+.table th {
+    background-color: #003366;
+    color: white;
+    text-align: center;
+}
+.table td {
+    vertical-align: middle;
+}
+.btn-request {
+    background-color: #004080;
+    color: #fff;
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 13px;
+    transition: all 0.3s ease;
+}
+.btn-request:hover {
+    background-color: #0066cc;
+    transform: scale(1.05);
+}
+.btn-info, .btn-success {
+    border-radius: 20px;
+    padding: 5px 12px;
+}
+.alert-info {
+    background-color: #e9f4ff;
+    border-color: #b8e1ff;
+    color: #004080;
+}
+</style>
 
 <div class="container mt-4">
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Search Research Papers</h5>
-        </div>
-        <div class="card-body">
-            <form method="GET" action="search.php" class="row g-3">
-                <div class="col-md-4">
-                    <input type="text" name="keyword" class="form-control" placeholder="Search keywords..." value="<?php echo htmlspecialchars($keyword); ?>">
-                </div>
-                <div class="col-md-2">
-                    <input type="text" name="department" class="form-control" placeholder="Department" value="<?php echo htmlspecialchars($department); ?>">
-                </div>
-                <div class="col-md-2">
-                    <input type="text" name="year" class="form-control" placeholder="Year" value="<?php echo htmlspecialchars($year); ?>">
-                </div>
-                <div class="col-md-2">
-                    <input type="text" name="author" class="form-control" placeholder="Author" value="<?php echo htmlspecialchars($author); ?>">
-                </div>
-                <div class="col-md-2 d-grid">
-                    <button type="submit" class="btn btn-primary">Search</button>
-                </div>
-            </form>
-        </div>
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">Search Research Papers</h5>
     </div>
-
-    <div class="card">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Search Results</h5>
-        </div>
-        <div class="card-body">
-            <?php if ($result->num_rows > 0): ?>
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Title</th>
-                                <th>Authors</th>
-                                <th>Department</th>
-                                <th>Year</th>
-                                <th>Uploaded By</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php while ($row = $result->fetch_assoc()): ?>
-                                <tr>
-                                    <td>
-                                        <a href="view_research.php?id=<?php echo $row['id']; ?>" class="fw-bold text-decoration-none text-primary">
-                                            <?php echo htmlspecialchars($row['title']); ?>
-                                        </a>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($row['authors']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['department']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['year_published']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['uploader']); ?></td>
-                                    <td>
-                                        <button type="button" class="btn btn-sm btn-info view-abstract" data-bs-toggle="modal" data-bs-target="#abstractModal" 
-                                            data-title="<?php echo htmlspecialchars($row['title']); ?>" 
-                                            data-abstract="<?php echo htmlspecialchars($row['abstract']); ?>"
-                                            data-keywords="<?php echo htmlspecialchars($row['keywords']); ?>">
-                                            <i class="fas fa-eye"></i> Abstract
-                                        </button>
-
-                                        <?php if ($_SESSION['role'] != 'guest'): ?>
-                                            <a href="../<?php echo $row['file_path']; ?>" class="btn btn-sm btn-success" target="_blank">
-                                                <i class="fas fa-file-pdf"></i> View PDF
-                                            </a>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                            <?php endwhile; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-                <?php if ($total_pages > 1): ?>
-                    <nav aria-label="Page navigation">
-                        <ul class="pagination justify-content-center">
-                            <?php echo generate_pagination($total_rows, $per_page, $page, 'search.php'); ?>
-                        </ul>
-                    </nav>
-                <?php endif; ?>
-
-            <?php else: ?>
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i> No research papers found.
-                </div>
-            <?php endif; ?>
-        </div>
+    <div class="card-body">
+        <form method="GET" action="search.php" class="row g-3">
+            <div class="col-md-4">
+                <input type="text" name="keyword" class="form-control" placeholder="Search keywords..." value="<?php echo htmlspecialchars($keyword); ?>">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="department" class="form-control" placeholder="Department" value="<?php echo htmlspecialchars($department); ?>">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="year" class="form-control" placeholder="Year Published" value="<?php echo htmlspecialchars($year); ?>">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="author" class="form-control" placeholder="Author" value="<?php echo htmlspecialchars($author); ?>">
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-primary">Search</button>
+            </div>
+        </form>
     </div>
 </div>
 
-<!-- Abstract Modal -->
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">Search Results</h5>
+    </div>
+    <div class="card-body">
+        <?php if ($result instanceof mysqli_result && $result->num_rows > 0): ?>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Authors</th>
+                            <th>Department</th>
+                            <th>Year Published</th>
+                            <th>Uploaded By</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php while ($row = $result->fetch_assoc()): ?>
+                            <tr>
+                                <td>
+                                    <a href="view_research.php?id=<?php echo $row['id']; ?>" 
+                                       class="fw-bold text-decoration-none text-primary">
+                                       <?php echo htmlspecialchars($row['title']); ?>
+                                    </a>
+                                </td>
+                                <td><?php echo htmlspecialchars($row['authors']); ?></td>
+                                <td><?php echo htmlspecialchars($row['department']); ?></td>
+                                <td><?php echo htmlspecialchars($row['year_published']); ?></td>
+                                <td><?php echo htmlspecialchars($row['uploader']); ?></td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#abstractModal"
+                                        data-title="<?php echo htmlspecialchars($row['title']); ?>" 
+                                        data-abstract="<?php echo htmlspecialchars($row['abstract']); ?>">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endwhile; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php else: ?>
+            <div class="alert alert-info text-center">
+                <i class="fas fa-info-circle"></i> No research papers found.
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+</div>
+
+<!-- ✅ Abstract Modal -->
 <div class="modal fade" id="abstractModal" tabindex="-1" aria-labelledby="abstractModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -234,10 +256,7 @@ $result = $stmt->get_result();
             <div class="modal-body">
                 <h4 id="modal-title"></h4>
                 <hr>
-                <h6>Abstract:</h6>
                 <p id="modal-abstract"></p>
-                <h6>Keywords:</h6>
-                <p id="modal-keywords"></p>
             </div>
         </div>
     </div>
@@ -245,12 +264,11 @@ $result = $stmt->get_result();
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const abstractModal = document.getElementById('abstractModal');
-    abstractModal.addEventListener('show.bs.modal', function(event) {
+    const modal = document.getElementById('abstractModal');
+    modal.addEventListener('show.bs.modal', function(event) {
         const button = event.relatedTarget;
         document.getElementById('modal-title').textContent = button.getAttribute('data-title');
         document.getElementById('modal-abstract').textContent = button.getAttribute('data-abstract');
-        document.getElementById('modal-keywords').textContent = button.getAttribute('data-keywords');
     });
 });
 </script>

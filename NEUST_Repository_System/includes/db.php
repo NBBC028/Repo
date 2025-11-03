@@ -51,14 +51,25 @@ $sql = "CREATE TABLE IF NOT EXISTS research (
     authors VARCHAR(255) NOT NULL,
     year_published YEAR NOT NULL,
     department VARCHAR(100) NOT NULL,
-    file_path VARCHAR(255) NOT NULL,
+    abstract_file_path VARCHAR(255) NOT NULL,
+    manuscript_file_path VARCHAR(255),
     uploaded_by INT UNSIGNED NOT NULL,
-    status ENUM('public', 'restricted') NOT NULL DEFAULT 'public',
+    status ENUM('public', 'restricted', 'pending') NOT NULL DEFAULT 'pending',
     keywords VARCHAR(255) NOT NULL,
+    year_section VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_uploaded_by FOREIGN KEY (uploaded_by) REFERENCES users(id)
         ON DELETE CASCADE
         ON UPDATE CASCADE
+) ENGINE=InnoDB";
+
+// Create notifications table for admin alerts
+$sql = "CREATE TABLE IF NOT EXISTS notifications (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    message TEXT NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    is_read TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB";
 
 if ($conn->query($sql) === FALSE) {
